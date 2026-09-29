@@ -5338,8 +5338,10 @@ type OverviewTaskStatus = ConversationTaskState["status"] | "complete";
 type OverviewStatusFilter = "all" | OverviewTaskStatus | "attention" | "completed";
 
 type OverviewTaskRow = {
+  application?: CatalogApplication;
   conversation: Conversation;
   ownerName: string;
+  project?: Project;
   projectName: string;
   status: OverviewTaskStatus;
   title: string;
@@ -5376,11 +5378,13 @@ function OverviewHome({
         ? projects.find((item) => item.id === conversation.projectId)
         : undefined;
       return {
+        application,
         conversation,
         ownerName: task?.ownerName
           ?? application?.name
           ?? agents.find((agent) => agent.id === conversation.agentId)?.name
           ?? "数字员工",
+        project,
         projectName: project?.name ?? "独立数字员工",
         status: (task?.status ?? "complete") as OverviewTaskStatus,
         title: task?.title ?? conversation.title,
@@ -5587,7 +5591,18 @@ function OverviewHome({
               key={row.conversation.id}
               onClick={() => onOpenConversation(row.conversation.id)}
             >
-              <span className="font-strong overview-task-name"><span className="overview-task-glyph" aria-hidden="true"><FileText size={18} /></span>{row.title}</span>
+              <span className="font-strong overview-task-name">
+                <span className="overview-task-avatar" aria-hidden="true">
+                  {row.project ? (
+                    <NavigationProjectIcon project={row.project} />
+                  ) : row.application ? (
+                    <img className="application-avatar-surface" src={row.application.avatar} alt="" />
+                  ) : (
+                    <span className="overview-task-avatar-fallback"><FileText size={18} /></span>
+                  )}
+                </span>
+                {row.title}
+              </span>
               <span>{row.ownerName}</span>
               <span>{row.projectName}</span>
               <span><Tag color={row.status === "error" ? "error" : row.status === "waiting" ? "warning" : row.status === "running" ? "processing" : "success"} variant="filled">{statusCopy[row.status]}</Tag></span>
