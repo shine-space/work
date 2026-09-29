@@ -5359,7 +5359,6 @@ function OverviewHome({
   tasks: ConversationTaskState[];
   onOpenConversation: (conversationId: string) => void;
 }) {
-  const [attentionTab, setAttentionTab] = useState<"attention" | "results">("attention");
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<"all" | "project" | "employee">("all");
   const [status, setStatus] = useState<OverviewStatusFilter>("all");
@@ -5417,7 +5416,6 @@ function OverviewHome({
   });
   const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
   const visibleRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
-  const spotlightRows = attentionTab === "attention" ? attentionRows : completedRows.slice(0, 4);
   const statusCopy: Record<OverviewTaskStatus, string> = {
     running: "执行中",
     waiting: "需要操作",
@@ -5425,10 +5423,6 @@ function OverviewHome({
     error: "执行失败",
     complete: "已结束",
   };
-
-  useEffect(() => {
-    if (attentionRows.length === 0 && completedRows.length > 0) setAttentionTab("results");
-  }, [attentionRows.length, completedRows.length]);
 
   useEffect(() => {
     setPage(1);
@@ -5474,8 +5468,6 @@ function OverviewHome({
               type="button"
               onClick={() => {
                 setStatus(metric.filter);
-                if (metric.filter === "attention") setAttentionTab("attention");
-                if (metric.filter === "completed") setAttentionTab("results");
               }}
             >
               <span className="overview-metric-top"><span>{metric.label}</span><span className="overview-metric-icon" aria-hidden="true">{metric.icon}</span></span>
@@ -5486,50 +5478,27 @@ function OverviewHome({
         </div>
       </section>
 
-      <section className="overview-attention" aria-label="任务操作与结果">
-        <header className="overview-section-heading">
-          <div><Title level={4}>任务动态</Title></div>
-        </header>
-        <div className="overview-attention-tabs" role="tablist" aria-label="任务动态分类">
-          <button
-            data-active={attentionTab === "attention"}
-            type="button"
-            role="tab"
-            aria-selected={attentionTab === "attention"}
-            onClick={() => setAttentionTab("attention")}
-          >
-            需要操作 <span>({attentionRows.length})</span>
-          </button>
-          <button
-            data-active={attentionTab === "results"}
-            type="button"
-            role="tab"
-            aria-selected={attentionTab === "results"}
-            onClick={() => setAttentionTab("results")}
-          >
-            查收结果 <span>({completedRows.length})</span>
-          </button>
-        </div>
-        <div className="overview-spotlight-list">
-          {spotlightRows.map((row) => (
-            <article key={`${attentionTab}-${row.conversation.id}`}>
-              <span className={`overview-result-icon is-${row.status}`} aria-hidden="true">
-                {row.status === "error" || row.status === "waiting" ? <ShieldAlert size={21} /> : <FileCheck2 size={21} />}
-              </span>
-              <span className="overview-spotlight-copy">
-                <strong>{row.title}</strong>
-                <small>{row.ownerName} · {row.projectName} · {row.updatedAt}</small>
-              </span>
-              <Button onClick={() => onOpenConversation(row.conversation.id)}>
-                {attentionTab === "attention" ? "去处理" : "查看结果"}
-              </Button>
-            </article>
-          ))}
-          {spotlightRows.length === 0 ? (
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={attentionTab === "attention" ? "暂无需要操作的任务" : "暂无可查收的结果"} />
-          ) : null}
-        </div>
-      </section>
+      {status === "all" && attentionRows.length > 0 ? (
+        <section className="overview-attention" aria-label="需要操作的任务">
+          <header className="overview-section-heading">
+            <div><Title level={4}>需要操作</Title></div>
+          </header>
+          <div className="overview-spotlight-list">
+            {attentionRows.map((row) => (
+              <article key={row.conversation.id}>
+                <span className={`overview-result-icon is-${row.status}`} aria-hidden="true">
+                  <ShieldAlert size={21} />
+                </span>
+                <span className="overview-spotlight-copy">
+                  <strong>{row.title}</strong>
+                  <small>{row.ownerName} · {row.projectName} · {row.updatedAt}</small>
+                </span>
+                <Button onClick={() => onOpenConversation(row.conversation.id)}>去处理</Button>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="overview-all-tasks" aria-labelledby="overview-all-tasks-title">
         <header>

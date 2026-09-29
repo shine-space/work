@@ -2734,21 +2734,6 @@ padding: 16px;
 .overview-metrics span { color: var(--ant-color-text-secondary); font-size: 12px; }
 .overview-summary > small { display: block; margin-top: 12px; color: var(--ant-color-text-tertiary); font-size: 12px; }
 .overview-attention { margin-top: 24px; }
-.overview-attention-tabs { display: flex; gap: 24px; border-bottom: 1px solid var(--ant-color-border-secondary); }
-.overview-attention-tabs button {
-  position: relative;
-  min-height: 40px;
-  padding: 0 4px;
-  border: 0;
-  background: transparent;
-  color: var(--ant-color-text-secondary);
-  cursor: pointer;
-  font-weight: var(--ant-font-weight-strong);
-}
-.overview-attention-tabs button::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: transparent; content: ""; }
-.overview-attention-tabs button[data-active="true"] { color: var(--ant-color-text); }
-.overview-attention-tabs button[data-active="true"]::after { background: var(--ant-color-primary); }
-.overview-attention-tabs button span { color: var(--ant-color-text-tertiary); font-weight: 400; }
 .overview-spotlight-list { display: grid; margin-top: 12px; gap: 8px; }
 .overview-spotlight-list article {
   display: grid;
@@ -2855,7 +2840,6 @@ padding: 16px;
   .overview-period-select { width: 100%; }
   .overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-metrics button { min-height: 76px; padding: 12px; }
-  .overview-attention-tabs { gap: 18px; }
   .overview-spotlight-list article { grid-template-columns: 8px minmax(0, 1fr); }
   .overview-spotlight-list article > .ant-btn { grid-column: 2; justify-self: start; padding-inline: 0; }
   .overview-filters { grid-template-columns: minmax(0, 1fr); }

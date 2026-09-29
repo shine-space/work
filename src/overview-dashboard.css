@@ -48,11 +48,6 @@
 .overview-dashboard .overview-section-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .overview-dashboard .overview-section-heading h4,
 .overview-dashboard .overview-table-heading h4 { margin: 0 0 2px; color: var(--ant-color-text); font-size: 16px; font-weight: 500; }
-.overview-dashboard .overview-attention-tabs { gap: 28px; border-color: var(--ant-color-border-secondary); }
-.overview-dashboard .overview-attention-tabs button { padding: 0 0 12px; color: var(--ant-color-text-secondary); font-size: 13px; }
-.overview-dashboard .overview-attention-tabs button span { margin-left: 5px; padding: 2px 6px; border-radius: var(--ty-radius-5); background: var(--ant-color-fill-quaternary); color: var(--ant-color-text-secondary); }
-.overview-dashboard .overview-attention-tabs button[data-active="true"] { color: var(--ant-color-primary); }
-.overview-dashboard .overview-attention-tabs button[data-active="true"]::after { background: var(--ant-color-primary); }
 .overview-dashboard .overview-spotlight-list { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 4px; column-gap: 28px; row-gap: 0; }
 .overview-dashboard .overview-spotlight-list article { min-height: 92px; padding: 18px 0; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 12px; border: 0; border-bottom: 1px dashed var(--ant-color-border-secondary); border-radius: 0; background: transparent; }
 .overview-dashboard .overview-result-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: var(--ty-radius-10); color: var(--ant-color-success); background: var(--ant-color-success-bg); }
