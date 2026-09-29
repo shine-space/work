@@ -85,6 +85,7 @@ import {
   Mail,
   MailCheck,
   MessageCirclePlus,
+  MessagesSquare,
   MessageSquare,
   MonitorSmartphone,
   MoreHorizontal,
@@ -5454,7 +5455,7 @@ function OverviewHome({
         </header>
         <div className="overview-metrics">
           {[
-            { filter: "all" as const, label: "任务总数", value: periodRows.length, icon: <FolderKanban size={21} />, note: "数字员工的全部工作记录" },
+            { filter: "all" as const, label: "任务总数", value: periodRows.length, icon: <MessagesSquare size={21} />, note: "数字员工的全部工作记录" },
             { filter: "running" as const, label: "执行中任务", value: runningCount, icon: <Timer size={21} />, note: runningCount > 0 ? "数字员工正在为你推进" : "当前没有正在执行的任务" },
             { filter: "attention" as const, label: "需要操作", value: attentionRows.length, icon: <ShieldAlert size={21} />, note: attentionRows.length > 0 ? "查看等待处理与异常事项" : "暂无需要处理的事项" },
             { filter: "completed" as const, label: "已结束任务", value: completedRows.length, icon: <CircleCheck size={21} />, note: "查看数字员工的交付结果" },
