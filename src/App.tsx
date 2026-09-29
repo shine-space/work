@@ -743,7 +743,7 @@ type CatalogApplication = {
   contextId: ApplicationId;
 };
 
-const applicationCatalog: CatalogApplication[] = [
+const applicationCatalogSource: CatalogApplication[] = [
   { id: "senior-developer", name: "高级开发工程师", category: "技术研发", description: "解决复杂系统设计与技术攻坚问题，提升架构质量、研发效率和交付稳定性", cover: "/application-covers/01-高级开发工程师.png", avatar: "/application-avatars/01-高级开发工程师.png", contextId: "project" },
   { id: "senior-financial-analyst", name: "资深财务分析师", category: "数据分析", description: "分析财务表现与经营差异，优化预算预测、成本管控和管理决策质量", cover: "/application-covers/02-资深财务分析师.png", avatar: "/application-avatars/02-资深财务分析师.png", contextId: "project" },
   { id: "ui-designer", name: "UI设计师", category: "产品设计", description: "将业务需求转化为清晰易用的界面，提升产品体验、效率与品牌一致性", cover: "/application-covers/03-UI设计师.png", avatar: "/application-avatars/03-UI设计师.png", contextId: "files" },
@@ -765,6 +765,12 @@ const applicationCatalog: CatalogApplication[] = [
   { id: "industry-research-consultant", name: "行业研究顾问", category: "知识研究", description: "跟踪行业趋势、政策与竞争格局，形成支持战略选择的研究判断", cover: "/application-covers/19-行业研究顾问.png", avatar: "/application-avatars/19-行业研究顾问.png", contextId: "history" },
   { id: "enterprise-knowledge-manager", name: "企业知识管理员", category: "知识研究", description: "建立知识分类、治理与更新机制，提升企业信息检索、复用和传承效率", cover: "/application-covers/20-企业知识管理员.png", avatar: "/application-avatars/20-企业知识管理员.png", contextId: "project" },
 ];
+
+const applicationCatalog: CatalogApplication[] = applicationCatalogSource.map((application) => ({
+  ...application,
+  cover: getPublicAssetPath(application.cover),
+  avatar: getPublicAssetPath(application.avatar),
+}));
 
 const applicationSkillTags: Record<CatalogApplication["id"], readonly [string, string, string]> = {
   "senior-developer": ["架构设计", "技术攻坚", "代码评审"],
@@ -1054,6 +1060,26 @@ type WorkspaceRoute =
   | { page: "conversation"; projectId: string; conversationId: string }
   | { page: "standalone"; conversationId: string };
 
+const appBasePath = import.meta.env.BASE_URL === "/"
+  ? ""
+  : import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function getWorkspacePathname(pathname: string) {
+  if (!appBasePath) return pathname;
+  if (pathname === appBasePath) return "/";
+  if (pathname.startsWith(`${appBasePath}/`)) return pathname.slice(appBasePath.length);
+  return pathname;
+}
+
+function getBrowserPath(pathname: string) {
+  const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
+  return `${appBasePath}${normalizedPath}`;
+}
+
+function getPublicAssetPath(pathname: string) {
+  return `${import.meta.env.BASE_URL}${pathname.replace(/^\/+/, "")}`;
+}
+
 function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   if (/^\/overview\/?$/.test(pathname)) return { page: "overview" };
   if (/^\/apps\/?$/.test(pathname)) return { page: "applications" };
@@ -1203,12 +1229,13 @@ function ConversationWorkspace({
   const [conversations, setConversations] = useState(initialConversations);
   const [skillInstallations, setSkillInstallations] = useState<SkillInstallation[]>(readSkillInstallations);
   const [pathname, setPathname] = useState(() => {
-    if (window.location.pathname === "/") {
+    const initialLocation = getWorkspacePathname(window.location.pathname);
+    if (initialLocation === "/") {
       const initialPath = `/projects/${projects[0].id}`;
-      window.history.replaceState(null, "", initialPath);
+      window.history.replaceState(null, "", getBrowserPath(initialPath));
       return initialPath;
     }
-    return window.location.pathname;
+    return initialLocation;
   });
   const [conversationTasks, setConversationTasks] = useState<Record<string, ConversationTaskState>>({});
   const [viewedTaskVersions, setViewedTaskVersions] = useState<Record<string, number>>({});
@@ -1241,14 +1268,14 @@ function ConversationWorkspace({
   }, [antMessage, skillInstallations]);
 
   useEffect(() => {
-    const handlePopState = () => setPathname(window.location.pathname);
+    const handlePopState = () => setPathname(getWorkspacePathname(window.location.pathname));
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   const navigateTo = useCallback((nextPath: string) => {
-    if (nextPath === window.location.pathname) return;
-    window.history.pushState(null, "", nextPath);
+    if (nextPath === getWorkspacePathname(window.location.pathname)) return;
+    window.history.pushState(null, "", getBrowserPath(nextPath));
     setPathname(nextPath);
   }, []);
 
@@ -3071,7 +3098,7 @@ function ApplicationHoverCard({
     <article className="application-hover-card" aria-label={`${application.name}应用信息`}>
       <img
         className="application-hover-card-background"
-        src="/backgrounds/application-hover-card.png"
+        src={getPublicAssetPath("backgrounds/application-hover-card.png")}
         alt=""
         aria-hidden="true"
       />
@@ -3141,7 +3168,7 @@ function ProjectHoverCard({
     <article className="application-hover-card project-hover-card" aria-label={`${project.name}信息`}>
       <img
         className="application-hover-card-background"
-        src="/backgrounds/application-hover-card.png"
+        src={getPublicAssetPath("backgrounds/application-hover-card.png")}
         alt=""
         aria-hidden="true"
       />
@@ -5231,7 +5258,7 @@ function CreateDigitalEmployeeModal({
       <div className="create-digital-employee-card">
         <img
           className="create-digital-employee-decoration"
-          src="/backgrounds/create-digital-employee-header.png"
+          src={getPublicAssetPath("backgrounds/create-digital-employee-header.png")}
           alt=""
           aria-hidden="true"
         />
@@ -7856,7 +7883,7 @@ function ConversationNavigation({
                 onClick={onSidebarExpand}
               >
                 <span className="collapsed-navigation-logo-mark" aria-hidden="true">
-                  <img src="/logo-collapsed.png" alt="" />
+                  <img src={getPublicAssetPath("logo-collapsed.png")} alt="" />
                 </span>
                 <span className="collapsed-navigation-expand-icon" aria-hidden="true">
                   <PanelLeftOpen size={16} />
@@ -7986,7 +8013,7 @@ function ConversationNavigation({
         <>
       <div className="navigation-brand-row">
         <button className="navigation-brand" type="button" onClick={() => onProjectSelect(activeProjectId)}>
-          <img className="navigation-brand-logo" src="/logo-expanded.png" alt="朝夕智能" />
+          <img className="navigation-brand-logo" src={getPublicAssetPath("logo-expanded.png")} alt="朝夕智能" />
         </button>
         <Space size={12}>
           <Tooltip title="搜索">
