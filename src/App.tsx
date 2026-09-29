@@ -8608,7 +8608,10 @@ function ThreadView({
           </ThreadPrimitive.Messages>
         </div>
 
-        <div className="empty-thread-heading" aria-hidden={!isEmpty}>
+        <div
+          className={`empty-thread-heading${!enableApplicationMentions && !selectedCatalogApplication ? " is-generic" : ""}`}
+          aria-hidden={!isEmpty}
+        >
           <NewConversationPrompt
             active={isEmpty}
             application={selectedCatalogApplication}
