@@ -6,7 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: "0.0.0.0",
-    port: 5173,
+    port: 5174,
     strictPort: true,
     // Cpolar's free plan assigns a new random subdomain whenever the tunnel
     // restarts. Restrict access to Cpolar-owned suffixes instead of disabling
