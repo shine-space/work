@@ -2534,17 +2534,19 @@ function ConversationWorkspace({
                         }}
                       />
                     ) : null}
-                    <GlobalTaskCenter
-                      activeConversationId={activeConversationId}
-                      expanded={taskOverlay === "global"}
-                      tasks={taskList}
-                      viewedTaskVersions={viewedTaskVersions}
-                      onOpen={(task) => {
-                        switchConversation(task.conversationId);
-                        if (task.status === "success") setProjectWorkspaceTool("runs");
-                      }}
-                      onExpandedChange={(open) => changeTaskOverlay(open ? "global" : null)}
-                    />
+                    {!isUnsentConversationDraft(activeConversation) ? (
+                      <GlobalTaskCenter
+                        activeConversationId={activeConversationId}
+                        expanded={taskOverlay === "global"}
+                        tasks={taskList}
+                        viewedTaskVersions={viewedTaskVersions}
+                        onOpen={(task) => {
+                          switchConversation(task.conversationId);
+                          if (task.status === "success") setProjectWorkspaceTool("runs");
+                        }}
+                        onExpandedChange={(open) => changeTaskOverlay(open ? "global" : null)}
+                      />
+                    ) : null}
                     </div>
 
                   {activeRuntimeError ? (
