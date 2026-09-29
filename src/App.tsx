@@ -5570,7 +5570,9 @@ function OverviewHome({
                     <span className="overview-task-avatar-fallback"><FileText size={18} /></span>
                   )}
                 </span>
-                {row.title}
+                <Tooltip title={row.title} placement="topLeft">
+                  <span className="overview-task-title">{row.title}</span>
+                </Tooltip>
               </span>
               <span>{row.ownerName}</span>
               <span>{row.projectName}</span>
