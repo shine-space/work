@@ -1,0 +1,27 @@
+export const runtimeThemeColors = {
+  light: {
+    layout: "#f5f5f5",
+    container: "#ffffff",
+    border: "#e5e5e5",
+    primary: "#2d2e33",
+  },
+  dark: {
+    layout: "#111214",
+    container: "#18191c",
+    border: "#34353a",
+    primary: "#d7d8dc",
+    primaryBg: "#232428",
+    primaryBgHover: "#2b2c31",
+    primaryBorder: "#44464d",
+    primaryBorderHover: "#666972",
+    primaryText: "#f1f1f3",
+    primaryTextHover: "#ffffff",
+    text: "rgba(255, 255, 255, 0.92)",
+    textSecondary: "rgba(255, 255, 255, 0.68)",
+    textTertiary: "rgba(255, 255, 255, 0.48)",
+    buttonBorder: "#3b3d43",
+    buttonSurface: "#18191c",
+    inputHover: "#202126",
+  },
+  accent: "#f36a4b",
+} as const;

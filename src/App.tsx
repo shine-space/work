@@ -210,9 +210,9 @@ function shouldShowNavigationTask(
 }
 
 const officePlatformCatalog = [
-  { id: "feishu", name: "飞书", shortName: "飞", color: "#3370ff", description: "通过飞书机器人接收并回复用户消息" },
-  { id: "wechat-work", name: "企业微信", shortName: "微", color: "#07c160", description: "通过企业微信机器人接收并回复用户消息" },
-  { id: "dingtalk", name: "钉钉", shortName: "钉", color: "#1677ff", description: "通过钉钉机器人接收并回复用户消息" },
+  { id: "feishu", name: "飞书", shortName: "飞", color: "var(--ui-color-feishu)", description: "通过飞书机器人接收并回复用户消息" },
+  { id: "wechat-work", name: "企业微信", shortName: "微", color: "var(--ui-color-wecom)", description: "通过企业微信机器人接收并回复用户消息" },
+  { id: "dingtalk", name: "钉钉", shortName: "钉", color: "var(--ui-color-blue-6)", description: "通过钉钉机器人接收并回复用户消息" },
 ] as const;
 
 const conversationMoreMenuItems: MenuProps["items"] = [
@@ -223,33 +223,33 @@ const conversationMoreMenuItems: MenuProps["items"] = [
 ];
 
 const teamOptions = [
-  { id: "argus", name: "Argus Workspace", shortName: "A", avatarColor: "#344054" },
-  { id: "operations", name: "设备运维团队", shortName: "运", avatarColor: "#14532d" },
-  { id: "product", name: "产品研发团队", shortName: "研", avatarColor: "#4c1d95" },
+  { id: "argus", name: "Argus Workspace", shortName: "A", avatarColor: "var(--ui-color-neutral-8)" },
+  { id: "operations", name: "设备运维团队", shortName: "运", avatarColor: "var(--ui-color-team-green)" },
+  { id: "product", name: "产品研发团队", shortName: "研", avatarColor: "var(--ui-color-team-purple)" },
 ];
 
 const projectMembers = [
-  { id: "demo-user", name: "演示用户", shortName: "演", avatarColor: "#40a9ff", role: "所有者" },
-  { id: "equipment-agent", name: "设备知识助手", shortName: "设", avatarColor: "#9254de", role: "协作者" },
-  { id: "engineer-wang", name: "王工", shortName: "王", avatarColor: "#1677ff", role: "协作者" },
-  { id: "engineer-chen", name: "陈工", shortName: "陈", avatarColor: "#0958d9", role: "协作者" },
-  { id: "engineer-li", name: "李工", shortName: "李", avatarColor: "#08979c", role: "协作者" },
-  { id: "engineer-zhou", name: "周工", shortName: "周", avatarColor: "#389e0d", role: "协作者" },
-  { id: "supervisor-sun", name: "孙主管", shortName: "孙", avatarColor: "#d46b08", role: "协作者" },
-  { id: "maintenance-agent", name: "维护计划助手", shortName: "维", avatarColor: "#531dab", role: "协作者" },
-  { id: "inspection-agent", name: "安全巡检助手", shortName: "安", avatarColor: "#c41d7f", role: "协作者" },
-  { id: "diagnosis-agent", name: "故障诊断助手", shortName: "诊", avatarColor: "#7cb305", role: "协作者" },
-  { id: "engineer-wu", name: "吴工", shortName: "吴", avatarColor: "#1d39c4", role: "协作者" },
-  { id: "engineer-zheng", name: "郑工", shortName: "郑", avatarColor: "#006d75", role: "协作者" },
-  { id: "spare-parts-admin", name: "备件管理员", shortName: "备", avatarColor: "#ad4e00", role: "协作者" },
-  { id: "energy-agent", name: "能效分析助手", shortName: "能", avatarColor: "#391085", role: "协作者" },
+  { id: "demo-user", name: "演示用户", shortName: "演", avatarColor: "var(--ui-color-blue-5)", role: "所有者" },
+  { id: "equipment-agent", name: "设备知识助手", shortName: "设", avatarColor: "var(--ui-color-purple-5)", role: "协作者" },
+  { id: "engineer-wang", name: "王工", shortName: "王", avatarColor: "var(--ui-color-blue-6)", role: "协作者" },
+  { id: "engineer-chen", name: "陈工", shortName: "陈", avatarColor: "var(--ui-color-blue-7)", role: "协作者" },
+  { id: "engineer-li", name: "李工", shortName: "李", avatarColor: "var(--ui-color-cyan-7)", role: "协作者" },
+  { id: "engineer-zhou", name: "周工", shortName: "周", avatarColor: "var(--ui-color-green-7)", role: "协作者" },
+  { id: "supervisor-sun", name: "孙主管", shortName: "孙", avatarColor: "var(--ui-color-orange-7)", role: "协作者" },
+  { id: "maintenance-agent", name: "维护计划助手", shortName: "维", avatarColor: "var(--ui-color-purple-7)", role: "协作者" },
+  { id: "inspection-agent", name: "安全巡检助手", shortName: "安", avatarColor: "var(--ui-color-magenta-7)", role: "协作者" },
+  { id: "diagnosis-agent", name: "故障诊断助手", shortName: "诊", avatarColor: "var(--ui-color-lime-7)", role: "协作者" },
+  { id: "engineer-wu", name: "吴工", shortName: "吴", avatarColor: "var(--ui-color-geekblue-7)", role: "协作者" },
+  { id: "engineer-zheng", name: "郑工", shortName: "郑", avatarColor: "var(--ui-color-cyan-8)", role: "协作者" },
+  { id: "spare-parts-admin", name: "备件管理员", shortName: "备", avatarColor: "var(--ui-color-orange-8)", role: "协作者" },
+  { id: "energy-agent", name: "能效分析助手", shortName: "能", avatarColor: "var(--ui-color-purple-8)", role: "协作者" },
 ];
 const currentUser = projectMembers[0];
 
 const projectInviteCandidates = [
-  { id: "engineer-zhao", name: "赵工", shortName: "赵", avatarColor: "#13a8a8" },
-  { id: "engineer-liu", name: "刘工", shortName: "刘", avatarColor: "#d46b08" },
-  { id: "analysis-agent", name: "经营分析助手", shortName: "析", avatarColor: "#531dab" },
+  { id: "engineer-zhao", name: "赵工", shortName: "赵", avatarColor: "var(--ui-color-teal-6)" },
+  { id: "engineer-liu", name: "刘工", shortName: "刘", avatarColor: "var(--ui-color-orange-7)" },
+  { id: "analysis-agent", name: "经营分析助手", shortName: "析", avatarColor: "var(--ui-color-purple-7)" },
 ];
 
 const teamMembers = [
@@ -260,7 +260,7 @@ const teamMembers = [
   ...projectInviteCandidates.map((member) => ({ ...member, role: "成员" })),
 ];
 
-const avatarColorPalette = ["#1677ff", "#13a8a8", "#722ed1", "#d46b08", "#c41d7f", "#237804"];
+const avatarColorPalette = ["var(--ui-color-blue-6)", "var(--ui-color-teal-6)", "var(--ui-color-purple-6)", "var(--ui-color-orange-7)", "var(--ui-color-magenta-7)", "var(--ui-color-green-8)"];
 
 function avatarColorForName(name: string) {
   const knownPerson = [...projectMembers, ...projectInviteCandidates].find((person) => person.name === name);
@@ -665,16 +665,16 @@ type SkillDefinition = {
 };
 
 const skillCatalog: SkillDefinition[] = [
-  { id: "deep-research", name: "深度研究", category: "研究分析", description: "交叉验证多来源资料，形成带依据的专题研究结论。", icon: "telescope", iconColor: "#f5222d", iconBackground: "#fff1f0" },
-  { id: "content-creation", name: "内容研创", category: "内容创作", description: "根据目标、素材和受众生成结构完整的内容初稿。", icon: "pen", iconColor: "#1677ff", iconBackground: "#e6f4ff" },
-  { id: "webpage-reader", name: "网页速读", category: "研究分析", description: "快速提炼网页重点、关键数据和待跟进事项。", icon: "scan", iconColor: "#fa8c16", iconBackground: "#fff7e6" },
-  { id: "data-insight", name: "数据洞察", category: "数据处理", description: "分析业务指标变化，识别异常、趋势与可能原因。", icon: "chart", iconColor: "#722ed1", iconBackground: "#f9f0ff" },
-  { id: "meeting-notes", name: "会议纪要", category: "办公效率", description: "整理讨论结论、决策事项、负责人和截止时间。", icon: "notes", iconColor: "#13c2c2", iconBackground: "#e6fffb" },
-  { id: "document-review", name: "文档校对", category: "办公效率", description: "检查错别字、语法、格式及专业术语一致性。", icon: "review", iconColor: "#52c41a", iconBackground: "#f6ffed" },
-  { id: "table-cleanup", name: "表格整理", category: "数据处理", description: "规范字段和数据格式，完成清洗、分类与摘要。", icon: "table", iconColor: "#a0d911", iconBackground: "#fcffe6" },
-  { id: "project-weekly", name: "项目周报", category: "办公效率", description: "汇总项目进展、风险、阻塞事项和下周计划。", icon: "calendar", iconColor: "#faad14", iconBackground: "#fffbe6" },
-  { id: "risk-scan", name: "风险扫描", category: "研究分析", description: "识别合同、方案与交付材料中的潜在风险。", icon: "risk", iconColor: "#eb2f96", iconBackground: "#fff0f6" },
-  { id: "multilingual-translation", name: "多语翻译", category: "内容创作", description: "保留专业术语和原有格式，完成准确自然的翻译。", icon: "translate", iconColor: "#2f54eb", iconBackground: "#f0f5ff" },
+  { id: "deep-research", name: "深度研究", category: "研究分析", description: "交叉验证多来源资料，形成带依据的专题研究结论。", icon: "telescope", iconColor: "var(--ui-color-red-6)", iconBackground: "var(--ui-color-red-1)" },
+  { id: "content-creation", name: "内容研创", category: "内容创作", description: "根据目标、素材和受众生成结构完整的内容初稿。", icon: "pen", iconColor: "var(--ui-color-blue-6)", iconBackground: "var(--ui-color-blue-1)" },
+  { id: "webpage-reader", name: "网页速读", category: "研究分析", description: "快速提炼网页重点、关键数据和待跟进事项。", icon: "scan", iconColor: "var(--ui-color-orange-6)", iconBackground: "var(--ui-color-orange-1)" },
+  { id: "data-insight", name: "数据洞察", category: "数据处理", description: "分析业务指标变化，识别异常、趋势与可能原因。", icon: "chart", iconColor: "var(--ui-color-purple-6)", iconBackground: "var(--ui-color-purple-1)" },
+  { id: "meeting-notes", name: "会议纪要", category: "办公效率", description: "整理讨论结论、决策事项、负责人和截止时间。", icon: "notes", iconColor: "var(--ui-color-cyan-6)", iconBackground: "var(--ui-color-cyan-1)" },
+  { id: "document-review", name: "文档校对", category: "办公效率", description: "检查错别字、语法、格式及专业术语一致性。", icon: "review", iconColor: "var(--ui-color-green-6)", iconBackground: "var(--ui-color-green-1)" },
+  { id: "table-cleanup", name: "表格整理", category: "数据处理", description: "规范字段和数据格式，完成清洗、分类与摘要。", icon: "table", iconColor: "var(--ui-color-lime-6)", iconBackground: "var(--ui-color-lime-1)" },
+  { id: "project-weekly", name: "项目周报", category: "办公效率", description: "汇总项目进展、风险、阻塞事项和下周计划。", icon: "calendar", iconColor: "var(--ui-color-gold-6)", iconBackground: "var(--ui-color-gold-1)" },
+  { id: "risk-scan", name: "风险扫描", category: "研究分析", description: "识别合同、方案与交付材料中的潜在风险。", icon: "risk", iconColor: "var(--ui-color-magenta-6)", iconBackground: "var(--ui-color-magenta-1)" },
+  { id: "multilingual-translation", name: "多语翻译", category: "内容创作", description: "保留专业术语和原有格式，完成准确自然的翻译。", icon: "translate", iconColor: "var(--ui-color-geekblue-6)", iconBackground: "var(--ui-color-geekblue-1)" },
 ];
 
 const skillDetailCatalog: Record<string, { capabilities: string[]; usage: string }> = {
@@ -3175,8 +3175,8 @@ function ConversationHistoryPanel({
   onSelect,
 }: ConversationHistoryPanelProps) {
   const historyPanelStyle = {
-    "--conversation-history-icon-color": "rgba(0, 0, 0, 0.45)",
-    "--conversation-history-icon-hover-color": "rgba(0, 0, 0, 0.95)",
+    "--conversation-history-icon-color": "var(--ui-color-black-a45)",
+    "--conversation-history-icon-hover-color": "var(--ui-color-black-a95)",
   } as CSSProperties;
   const groups = Array.from(
     conversations.reduce((result, conversation) => {

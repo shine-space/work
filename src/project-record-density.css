@@ -1,6 +1,6 @@
 .project-record.project-conversation-record {
  padding: 5px 4px; 
-border-radius: 8px;
+border-radius: var(--ty-radius-8);
 }
 
 .project-conversation-record > button,
