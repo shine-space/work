@@ -5482,7 +5482,7 @@ function OverviewHome({
 
       <section className="overview-attention" aria-label="任务操作与结果">
         <header className="overview-section-heading">
-          <div><Title level={4}>任务动态</Title><Text type="secondary">及时处理待办，查收最新交付</Text></div>
+          <div><Title level={4}>任务动态</Title></div>
         </header>
         <div className="overview-attention-tabs" role="tablist" aria-label="任务动态分类">
           <button
@@ -5527,7 +5527,7 @@ function OverviewHome({
 
       <section className="overview-all-tasks" aria-labelledby="overview-all-tasks-title">
         <header>
-          <div className="overview-table-heading"><Title id="overview-all-tasks-title" level={4}>全部任务</Title><Text type="secondary">跟进每一项工作的进度与结果</Text></div>
+          <div className="overview-table-heading"><Title id="overview-all-tasks-title" level={4}>全部任务</Title></div>
           <span><ListFilter size={16} /> 列表</span>
         </header>
         <div className="overview-filters">
