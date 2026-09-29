@@ -2160,6 +2160,17 @@ function ConversationWorkspace({
     });
   };
 
+  const archiveProject = (project: Project) => {
+    modal.confirm({
+      title: `归档“${project.name}”？`,
+      content: "归档后，群组项目及其对话会从当前群组项目列表中隐藏，之后仍可在归档群组项目中恢复。",
+      okText: "归档",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: () => antMessage.success("群组项目已归档"),
+    });
+  };
+
   const editProject = (project: Project) => {
     let nextName = project.name;
     modal.confirm({
@@ -2248,7 +2259,6 @@ function ConversationWorkspace({
       viewedTaskVersions={viewedTaskVersions}
       projects={projectList}
       onCreateProject={createProject}
-      onCreateProjectConversation={createProjectConversation}
       onCreateStandaloneConversation={createStandaloneConversation}
       onDelete={deleteConversation}
       onDarkModeChange={onDarkModeChange}
@@ -2256,6 +2266,7 @@ function ConversationWorkspace({
       onOverviewOpen={openOverview}
       onProjectSelect={openProject}
       onPrototypeAction={(label) => antMessage.info(`${label}为结构演示入口，正式版将接入 Argus 对应能力。`)}
+      onArchiveProject={archiveProject}
       onRename={renameConversation}
       onRenameProject={renameProject}
       onSelect={switchConversation}
@@ -7502,7 +7513,6 @@ type ConversationNavigationProps = {
     administratorApplicationId: string,
     description: string,
   ) => void;
-  onCreateProjectConversation: (projectId?: string) => void;
   onCreateStandaloneConversation: () => void;
   onApplicationsOpen: () => void;
   onOverviewOpen: () => void;
@@ -7510,6 +7520,7 @@ type ConversationNavigationProps = {
   onDelete: (conversation: Conversation) => void;
   onProjectSelect: (projectId: string) => void;
   onPrototypeAction: (label: string) => void;
+  onArchiveProject: (project: Project) => void;
   onRename: (conversation: Conversation) => void;
   onRenameProject: (project: Project) => void;
   onSelect: (conversationId: string) => void;
@@ -7532,7 +7543,6 @@ function ConversationNavigation({
   viewedTaskVersions,
   projects,
   onCreateProject,
-  onCreateProjectConversation,
   onCreateStandaloneConversation,
   onApplicationsOpen,
   onOverviewOpen,
@@ -7540,6 +7550,7 @@ function ConversationNavigation({
   onDelete,
   onProjectSelect,
   onPrototypeAction,
+  onArchiveProject,
   onRename,
   onRenameProject,
   onSelect,
@@ -7765,11 +7776,12 @@ function ConversationNavigation({
               menu={{
                 items: [
                   { key: "rename", icon: <Pencil size={14} />, label: "重命名群组项目" },
-                  { key: "new", icon: <Plus size={14} />, label: "新建对话" },
+                  { type: "divider" },
+                  { key: "archive", danger: true, icon: <Archive size={14} />, label: "归档" },
                 ],
                 onClick: ({ key }) => {
                   if (key === "rename") onRenameProject(project);
-                  if (key === "new") onCreateProjectConversation(project.id);
+                  if (key === "archive") onArchiveProject(project);
                 },
               }}
             >
@@ -8148,11 +8160,12 @@ function ConversationNavigation({
                         menu={{
                           items: [
                             { key: "rename", icon: <Pencil size={14} />, label: "重命名群组项目" },
-                            { key: "new", icon: <Plus size={14} />, label: "新建对话" },
+                            { type: "divider" },
+                            { key: "archive", danger: true, icon: <Archive size={14} />, label: "归档" },
                           ],
                           onClick: ({ key }) => {
                             if (key === "rename") onRenameProject(project);
-                            if (key === "new") onCreateProjectConversation(project.id);
+                            if (key === "archive") onArchiveProject(project);
                           },
                         }}
                       >
