@@ -274,20 +274,16 @@ padding-top: 4px;
 .team-switch-option small { color: var(--ant-color-text-tertiary); font-size: 12px; }
 
 .navigation-primary-action,
-.navigation-fixed-links button,
 .navigation-section-header > button,
 .navigation-content-main,
 .profile-row > button { border: 0; background: transparent; color: var(--ant-color-text); cursor: pointer; }
 
-.navigation-primary-action { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 8px; border-radius: var(--ty-radius-8); }
+.navigation-primary-action { display: flex; width: 100%; min-height: 36px; align-items: center; gap: 8px; border-radius: var(--ty-radius-8); text-align: left; font-size: 14px; }
 .navigation-primary-action:hover,
-.navigation-fixed-links button:hover,
 .navigation-content-row:hover { background: var(--hover-bg); }
 .navigation-primary-action[data-active="true"] { background: var(--active-bg); font-weight: var(--ant-font-weight-strong); }
 
-.navigation-fixed-links { display: grid;  margin-top: 4px}
-.navigation-fixed-links button { display: flex; min-height: 36px; align-items: center; gap: 8px; border-radius: var(--ty-radius-8); text-align: left; font-size: 14px; }
-.navigation-fixed-links button[data-active="true"] { background: var(--active-bg); font-weight: var(--ant-font-weight-strong); }
+.navigation-fixed-links { display: grid; gap: 4px; }
 .navigation-scroll-area { min-height: 0; padding-top: 12px; flex: 1; overflow-x: hidden; overflow-y: overlay; }
 .navigation-section + .navigation-section { margin-top: 12px; }
 .navigation-section-header { display: flex; min-height: 28px; padding: 0 0px 8px 6px; align-items: center; justify-content: space-between; }

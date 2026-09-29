@@ -8050,30 +8050,34 @@ function ConversationNavigation({
         />
       ) : null}
 
-      <button
-        className="navigation-primary-action"
-        data-active={newConversationActive}
-        type="button"
-        aria-label="新对话"
-        onClick={onCreateStandaloneConversation}
-      >
-        <MessageCirclePlus size={16} />
-        <span>新对话</span>
-      </button>
-
-      <button
-        className="navigation-primary-action"
-        data-active={overviewPageActive}
-        type="button"
-        aria-label="概览"
-        onClick={onOverviewOpen}
-      >
-        <Gauge size={16} />
-        <span>概览</span>
-      </button>
-
       <div className="navigation-fixed-links" aria-label="工作区导航">
-        <button data-active={applicationsPageActive} type="button" onClick={onApplicationsOpen}>
+        <button
+          className="navigation-primary-action"
+          data-active={newConversationActive}
+          type="button"
+          aria-label="新对话"
+          onClick={onCreateStandaloneConversation}
+        >
+          <MessageCirclePlus size={16} />
+          <span>新对话</span>
+        </button>
+        <button
+          className="navigation-primary-action"
+          data-active={overviewPageActive}
+          type="button"
+          aria-label="概览"
+          onClick={onOverviewOpen}
+        >
+          <Gauge size={16} />
+          <span>概览</span>
+        </button>
+        <button
+          className="navigation-primary-action"
+          data-active={applicationsPageActive}
+          type="button"
+          aria-label="人才与技能"
+          onClick={onApplicationsOpen}
+        >
           <Store size={16} /><span>人才与技能</span>
         </button>
       </div>
