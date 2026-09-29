@@ -5576,7 +5576,7 @@ function OverviewHome({
               </span>
               <span>{row.ownerName}</span>
               <span>{row.projectName}</span>
-              <span><Tag color={row.status === "error" ? "error" : row.status === "waiting" ? "warning" : row.status === "running" ? "processing" : "success"} variant="filled">{statusCopy[row.status]}</Tag></span>
+              <span><Tag color={row.status === "error" ? "error" : row.status === "waiting" ? "warning" : row.status === "running" ? "blue" : "success"} variant="filled">{statusCopy[row.status]}</Tag></span>
               <span>{row.updatedAt}</span>
             </button>
           ))}
