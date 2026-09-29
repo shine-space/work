@@ -1,0 +1,20 @@
+.project-record.project-conversation-record {
+ padding: 5px 4px; 
+border-radius: 8px;
+}
+
+.project-conversation-record > button,
+.project-conversation-record > span:last-child {
+  min-height: 36px;
+
+}
+
+.project-conversation-record > span:last-child {
+  align-items: center;
+}
+
+.project-conversation-record > span:last-child .ant-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+}

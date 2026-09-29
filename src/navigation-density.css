@@ -1,0 +1,38 @@
+.navigation-primary-action,
+.navigation-fixed-links button,
+.navigation-conversation-row,
+.navigation-conversation-row > button:first-child,
+.navigation-project-row,
+.navigation-project-toggle,
+.navigation-project-main,
+.navigation-project-conversation-row,
+.navigation-project-conversation-row > button:first-child {
+}
+
+.navigation-primary-action,
+.navigation-fixed-links button,
+.navigation-conversation-row > button:first-child,
+.navigation-project-main,
+.navigation-project-conversation-row > button:first-child,
+.navigation-conversation-row > button:first-child > span,
+.navigation-project-main > span,
+.navigation-project-conversation-row > button:first-child > span {
+  font-size: 14px;
+}
+
+.app-shell,
+.app-shell[data-theme="dark"] {
+  --hover-bg: var(--active-bg);
+}
+
+.navigation-section-header > .ant-btn,
+.navigation-section-header > .ant-btn:hover,
+.navigation-section-header > .ant-btn:active {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.navigation-section-header > .ant-btn:hover,
+.navigation-section-header > .ant-btn:active {
+  background-color: var(--active-bg) !important;
+}
