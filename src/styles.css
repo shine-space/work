@@ -2047,6 +2047,8 @@ padding: 16px;
 
 .empty-thread-heading { position: absolute; z-index: 1; top: 42%; left: 50%; width: min(800px, calc(100% - 36px)); opacity: 1; transform: translate(-50%, -50%); transition: opacity 160ms ease-out; }
 .thread-viewport:not(.is-empty) .empty-thread-heading { opacity: 0; pointer-events: none; }
+.new-conversation-brand-prompt { display: flex; width: 100%; align-items: center; flex-direction: column; gap: 16px; }
+.new-conversation-brand-logo { display: block; width: 60px; height: 60px; flex: 0 0 60px; object-fit: contain; }
 .new-conversation-prompt { width: 100%; min-height: 44px; margin: 0; color: var(--ant-color-text); font-size: 36px; font-weight: 500; line-height: 44px; text-align: center; }
 .new-conversation-welcome {
   display: flex;

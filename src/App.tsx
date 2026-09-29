@@ -8721,10 +8721,18 @@ function NewConversationPrompt({
   }
 
   return (
-    <h1 className="new-conversation-prompt" aria-label={prompt}>
-      <span aria-hidden="true">{visibleText}</span>
-      {visibleText.length < prompt.length ? <span className="typewriter-caret" aria-hidden="true" /> : null}
-    </h1>
+    <div className="new-conversation-brand-prompt">
+      <img
+        className="new-conversation-brand-logo"
+        src={getPublicAssetPath("logo-collapsed.png")}
+        alt=""
+        aria-hidden="true"
+      />
+      <h1 className="new-conversation-prompt" aria-label={prompt}>
+        <span aria-hidden="true">{visibleText}</span>
+        {visibleText.length < prompt.length ? <span className="typewriter-caret" aria-hidden="true" /> : null}
+      </h1>
+    </div>
   );
 }
 
