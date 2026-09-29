@@ -2103,6 +2103,14 @@ function ConversationWorkspace({
     });
   };
 
+  const openConversationTargetApplication = (catalogApplicationId: string) => {
+    const application = getCreatedDigitalEmployees(conversations).find(
+      (item) => item.id === catalogApplicationId,
+    );
+    if (!application) return;
+    launchStandaloneApplication(application);
+  };
+
   const renameConversation = (conversation: Conversation) => {
     let nextTitle = conversation.title;
     modal.confirm({
@@ -2604,6 +2612,8 @@ function ConversationWorkspace({
                       }
                       onTargetApplicationSelect={selectConversationTargetApplication}
                       onTargetProjectSelect={selectConversationTargetProject}
+                      onBrowseApplication={openConversationTargetApplication}
+                      onBrowseProject={openProject}
                       uploadProps={{ beforeUpload, multiple: true, showUploadList: false }}
                     />
                   </section>
@@ -8547,6 +8557,8 @@ type ThreadViewProps = {
   onFileRemove: (file: SelectedFile) => void;
   onTargetApplicationSelect: (applicationId: string) => void;
   onTargetProjectSelect: (projectId: string) => void;
+  onBrowseApplication: (applicationId: string) => void;
+  onBrowseProject: (projectId: string) => void;
   uploadProps: UploadProps;
 };
 
@@ -8569,6 +8581,8 @@ function ThreadView({
   onFileRemove,
   onTargetApplicationSelect,
   onTargetProjectSelect,
+  onBrowseApplication,
+  onBrowseProject,
   uploadProps,
 }: ThreadViewProps) {
   const isEmpty = useAuiState((state) => state.thread.isEmpty);
@@ -8642,8 +8656,94 @@ function ThreadView({
             uploadProps={uploadProps}
           />
         </ThreadPrimitive.ViewportFooter>
+        {isEmpty && !enableApplicationMentions && !selectedCatalogApplication ? (
+          <NewConversationTargetBrowser
+            applications={availableApplications}
+            projects={availableProjects}
+            onApplicationOpen={onBrowseApplication}
+            onProjectOpen={onBrowseProject}
+          />
+        ) : null}
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
+  );
+}
+
+function NewConversationTargetBrowser({
+  applications,
+  projects,
+  onApplicationOpen,
+  onProjectOpen,
+}: {
+  applications: CatalogApplication[];
+  projects: Project[];
+  onApplicationOpen: (applicationId: string) => void;
+  onProjectOpen: (projectId: string) => void;
+}) {
+  const [activeTab, setActiveTab] = useState<"applications" | "projects">("applications");
+  const items = activeTab === "applications" ? applications : projects;
+
+  return (
+    <section className="new-conversation-target-browser" aria-label="选择数字员工或群组项目">
+      <div className="new-conversation-target-tabs" role="tablist" aria-label="对话目标类型">
+        <button
+          className={activeTab === "applications" ? "is-active" : ""}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "applications"}
+          onClick={() => setActiveTab("applications")}
+        >
+          数字员工
+        </button>
+        <button
+          className={activeTab === "projects" ? "is-active" : ""}
+          type="button"
+          role="tab"
+          aria-selected={activeTab === "projects"}
+          onClick={() => setActiveTab("projects")}
+        >
+          群组项目
+        </button>
+      </div>
+      <div className="new-conversation-target-grid" role="tabpanel">
+        {activeTab === "applications"
+          ? applications.map((application) => (
+              <button
+                className="new-conversation-target-card"
+                type="button"
+                key={application.id}
+                onClick={() => onApplicationOpen(application.id)}
+              >
+                <img className="new-conversation-target-avatar" src={application.avatar} alt="" />
+                <span className="new-conversation-target-copy">
+                  <strong>{application.name}</strong>
+                  <small>{application.description}</small>
+                </span>
+              </button>
+            ))
+          : projects.map((project) => (
+              <button
+                className="new-conversation-target-card"
+                type="button"
+                key={project.id}
+                onClick={() => onProjectOpen(project.id)}
+              >
+                <span className="new-conversation-target-project-avatar" aria-hidden="true">
+                  <NavigationProjectIcon project={project} />
+                </span>
+                <span className="new-conversation-target-copy">
+                  <strong>{project.name}</strong>
+                  <small>{project.description}</small>
+                </span>
+              </button>
+            ))}
+        {items.length === 0 ? (
+          <div className="new-conversation-target-empty">
+            {activeTab === "applications" ? "暂无数字员工" : "暂无群组项目"}
+          </div>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
