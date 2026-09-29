@@ -1231,7 +1231,7 @@ function ConversationWorkspace({
   const [pathname, setPathname] = useState(() => {
     const initialLocation = getWorkspacePathname(window.location.pathname);
     if (initialLocation === "/") {
-      const initialPath = `/projects/${projects[0].id}`;
+      const initialPath = "/overview";
       window.history.replaceState(null, "", getBrowserPath(initialPath));
       return initialPath;
     }
