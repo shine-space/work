@@ -1,0 +1,18 @@
+:root {
+  --ty-motion-duration-fast: 120ms;
+  --ty-motion-duration-normal: 200ms;
+  --ty-motion-duration-slow: 360ms;
+  --ty-motion-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ty-motion-ease-enter: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ty-motion-ease-exit: cubic-bezier(0.3, 0, 1, 1);
+  --ty-motion-spring-stiffness: 420;
+  --ty-motion-spring-damping: 20;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --ty-motion-duration-fast: 0ms;
+    --ty-motion-duration-normal: 0ms;
+    --ty-motion-duration-slow: 0ms;
+  }
+}

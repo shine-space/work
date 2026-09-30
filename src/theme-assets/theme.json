@@ -25,7 +25,8 @@
     "colorTextSecondary": "#000000a6",
     "colorTextTertiary": "#000000a6",
     "colorTextPlaceholder": "#00000064",
-    "colorTextQuaternary": "#00000064"
+    "colorTextQuaternary": "#00000064",
+    "boxShadowSecondary": "0px 0px 0px 1px rgba(31, 34, 37, 0.1),0px 12px 24px -4px rgba(0, 0, 0, 0.08),0px 8px 16px -4px rgba(0, 0, 0, 0.04)"
   },
   "components": {
     "Drawer": {
@@ -42,8 +43,7 @@
     },
     "Dropdown": {
       "borderRadiusSM": 6,
-      "boxShadowPopoverArrow": "2px 2px 5px rgba(0,0,0,1)",
-      "boxShadowSecondary": "0px 0px 0px 1px rgba(31, 34, 37, 0.1),0px 12px 24px -4px rgba(0, 0, 0, 0.08),0px 8px 16px -4px rgba(0, 0, 0, 0.04)"
+      "boxShadowPopoverArrow": "2px 2px 5px rgba(0,0,0,1)"
     },
     "Input": {
       "hoverBg": "rgb(245,245,245)"

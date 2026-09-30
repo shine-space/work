@@ -47,6 +47,7 @@ import {
   type UploadProps,
 } from "antd";
 import { Cambio } from "cambio";
+import { AnimatePresence, LayoutGroup, motion, useReducedMotion } from "motion/react";
 import {
   Archive,
   ArrowLeft,
@@ -64,8 +65,10 @@ import {
   ChevronsUp,
   ChevronsUpDown,
   Check,
+  CircleAlert,
   CircleCheck,
   CirclePlus,
+  Clock3,
   Copy,
   Download,
   FileText,
@@ -78,8 +81,11 @@ import {
   ListCollapse,
   ListChevronsDownUp,
   ListFilter,
+  LayoutGrid,
+  List,
   Languages,
   Link2Off,
+  LoaderCircle,
   ListChecks,
   Menu,
   Mail,
@@ -97,9 +103,12 @@ import {
   PanelLeftOpen,
   PenLine,
   Pencil,
+  Pin,
+  PinOff,
   Pickaxe,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   ScanText,
   Settings,
@@ -137,6 +146,7 @@ import {
   type TeamResource,
   type TeamResourceGroup,
 } from "./data";
+import FolderFloat from "./components/FolderFloat";
 import { createTheme } from "./theme";
 
 const { Content } = Layout;
@@ -222,6 +232,18 @@ const conversationMoreMenuItems: MenuProps["items"] = [
   { key: "archive", icon: <Archive size={14} />, label: "归档（演示）", disabled: true },
   { type: "divider" },
   { key: "delete", icon: <Trash2 size={14} />, label: "删除", danger: true },
+];
+
+const getNavigationConversationMenuItems = (pinned: boolean): MenuProps["items"] => [
+  { key: "pin", icon: pinned ? <PinOff size={14} /> : <Pin size={14} />, label: pinned ? "取消置顶" : "置顶" },
+  ...conversationMoreMenuItems,
+];
+
+const getNavigationProjectMenuItems = (pinned: boolean): MenuProps["items"] => [
+  { key: "pin", icon: pinned ? <PinOff size={14} /> : <Pin size={14} />, label: pinned ? "取消置顶" : "置顶" },
+  { key: "rename", icon: <Pencil size={14} />, label: "重命名群组项目" },
+  { type: "divider" },
+  { key: "archive", danger: true, icon: <Archive size={14} />, label: "归档" },
 ];
 
 const teamOptions = [
@@ -1058,6 +1080,8 @@ const applicationMeta: Record<ApplicationId, { label: string; category: string; 
 type WorkspaceRoute =
   | { page: "overview" }
   | { page: "applications" }
+  | { page: "archive" }
+  | { page: "archiveProject"; projectId: string; conversationId?: string }
   | { page: "project"; projectId: string }
   | { page: "conversation"; projectId: string; conversationId: string }
   | { page: "standalone"; conversationId: string };
@@ -1085,6 +1109,24 @@ function getPublicAssetPath(pathname: string) {
 function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   if (/^\/overview\/?$/.test(pathname)) return { page: "overview" };
   if (/^\/apps\/?$/.test(pathname)) return { page: "applications" };
+  if (/^\/archive\/?$/.test(pathname)) return { page: "archive" };
+  const archiveConversationMatch = pathname.match(
+    /^\/archive\/projects\/([^/]+)\/conversations\/([^/]+)\/?$/,
+  );
+  if (archiveConversationMatch) {
+    return {
+      page: "archiveProject",
+      projectId: decodeURIComponent(archiveConversationMatch[1]),
+      conversationId: decodeURIComponent(archiveConversationMatch[2]),
+    };
+  }
+  const archiveProjectMatch = pathname.match(/^\/archive\/projects\/([^/]+)\/?$/);
+  if (archiveProjectMatch) {
+    return {
+      page: "archiveProject",
+      projectId: decodeURIComponent(archiveProjectMatch[1]),
+    };
+  }
   const standaloneMatch = pathname.match(/^\/conversations\/([^/]+)\/?$/);
   if (standaloneMatch) {
     return {
@@ -1947,6 +1989,27 @@ function ConversationWorkspace({
     onMobileNavigationChange(false);
   };
 
+  const openArchive = () => {
+    changeTaskOverlay(null);
+    discardActiveEmptyConversation();
+    setSelectedFiles([]);
+    navigateTo("/archive");
+    onMobileNavigationChange(false);
+  };
+
+  const openArchivedProject = (projectId: string) => {
+    changeTaskOverlay(null);
+    discardActiveEmptyConversation();
+    setSelectedFiles([]);
+    navigateTo(`/archive/projects/${projectId}`);
+    onMobileNavigationChange(false);
+  };
+
+  const openArchivedConversation = (projectId: string, conversationId: string) => {
+    navigateTo(`/archive/projects/${projectId}/conversations/${conversationId}`);
+    onMobileNavigationChange(false);
+  };
+
   const createProject = (
     name: string,
     applicationIds: string[],
@@ -2273,6 +2336,7 @@ function ConversationWorkspace({
       onDelete={deleteConversation}
       onDarkModeChange={onDarkModeChange}
       onApplicationsOpen={openApplications}
+      onArchiveOpen={openArchive}
       onOverviewOpen={openOverview}
       onProjectSelect={openProject}
       onPrototypeAction={(label) => antMessage.info(`${label}为结构演示入口，正式版将接入 Argus 对应能力。`)}
@@ -2326,6 +2390,18 @@ function ConversationWorkspace({
                   tasks={taskList}
                   onOpenConversation={switchConversation}
                 />
+              ) : route.page === "archiveProject" ? (
+                <ArchiveProjectHistory
+                  project={projectList.find((project) => project.id === route.projectId)}
+                  conversations={conversations.filter((conversation) => conversation.projectId === route.projectId)}
+                  selectedConversationId={route.conversationId}
+                  onBack={openArchive}
+                  onSelectConversation={(conversationId) => (
+                    openArchivedConversation(route.projectId, conversationId)
+                  )}
+                />
+              ) : route.page === "archive" ? (
+                <ArchiveHome projects={projectList} onProjectOpen={openArchivedProject} />
               ) : route.page === "applications" ? (
                   <ApplicationsHome
                     conversations={conversations}
@@ -3006,6 +3082,69 @@ const globalTaskStatusCopy: Record<ConversationTaskState["status"], { label: str
   error: { label: "任务需处理", description: "执行遇到问题，请返回查看" },
 };
 
+const taskStatusProgress: Record<ConversationTaskParticipantStatus, number> = {
+  queued: 18,
+  running: 68,
+  waiting: 82,
+  success: 100,
+  error: 100,
+};
+
+function TaskStatusFeedback({
+  status,
+  compact = false,
+}: {
+  status: ConversationTaskParticipantStatus;
+  compact?: boolean;
+}) {
+  const reduceMotion = useReducedMotion();
+  const progress = taskStatusProgress[status];
+  const isTerminal = status === "success" || status === "error";
+  const StatusIcon = status === "success"
+    ? CircleCheck
+    : status === "error"
+      ? CircleAlert
+      : status === "waiting"
+        ? Clock3
+        : LoaderCircle;
+
+  return (
+    <div
+      className={`task-status-feedback is-${status}${compact ? " is-compact" : ""}`}
+      role={status === "error" ? "alert" : "status"}
+      aria-live="polite"
+    >
+      <AnimatePresence initial={false} mode="wait">
+        <motion.span
+          className="task-status-feedback-icon"
+          key={status}
+          initial={reduceMotion ? false : { opacity: 0, scale: 0.82 }}
+          animate={{
+            opacity: 1,
+            scale: 1,
+            rotate: !reduceMotion && !isTerminal && status !== "waiting" ? 360 : 0,
+          }}
+          exit={reduceMotion ? undefined : { opacity: 0, scale: 0.88 }}
+          transition={!reduceMotion && !isTerminal && status !== "waiting"
+            ? { rotate: { duration: 0.9, repeat: Infinity, ease: "linear" }, opacity: { duration: 0.14 }, scale: { type: "spring", stiffness: 320, damping: 32, bounce: 0 } }
+            : { duration: reduceMotion ? 0 : 0.18 }}
+          aria-hidden="true"
+        >
+          <StatusIcon size={compact ? 14 : 16} />
+        </motion.span>
+      </AnimatePresence>
+      <span className="task-status-feedback-label">{taskParticipantStatusCopy[status]}</span>
+      <span className="task-status-feedback-track" aria-hidden="true">
+        <motion.i
+          initial={false}
+          animate={{ width: `${progress}%` }}
+          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 320, damping: 32, bounce: 0 }}
+        />
+      </span>
+    </div>
+  );
+}
+
 function TaskPendingIcon({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} fill="none" viewBox="0 0 20 20" aria-hidden="true">
@@ -3030,6 +3169,7 @@ function GlobalTaskCenter({
   onOpen: (task: ConversationTaskState) => void;
   onExpandedChange: (open: boolean) => void;
 }) {
+  const reduceMotion = useReducedMotion();
   const sortedTasks = [...tasks].sort((left, right) => (
     taskStatusPriority[right.status] - taskStatusPriority[left.status]
     || right.updatedAt - left.updatedAt
@@ -3059,8 +3199,15 @@ function GlobalTaskCenter({
         <span>{primaryStatusCopy.label}</span>
         <ChevronUp className="global-task-center-trigger-arrow" size={14} aria-hidden="true" />
       </button>
-      {expanded ? (
-        <div className="global-task-center-panel">
+      <AnimatePresence initial={false}>
+        {expanded ? (
+        <motion.div
+          className="global-task-center-panel"
+          initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.985 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={reduceMotion ? undefined : { opacity: 0, y: 5, scale: 0.99 }}
+          transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 320, damping: 32, bounce: 0 }}
+        >
           <header>
             <span className="global-task-center-header-icon"><TaskPendingIcon size={30} /></span>
             <div className="global-task-center-header-copy">
@@ -3078,7 +3225,7 @@ function GlobalTaskCenter({
           </header>
           <div className="global-task-center-list">
             {backgroundTasks.map((task) => (
-              <article className={`global-task-row is-${task.status}`} key={task.conversationId}>
+              <motion.article className={`global-task-row is-${task.status}`} layout="position" key={task.conversationId}>
                 <button className="global-task-row-main" type="button" onClick={() => {
                   onOpen(task);
                   onExpandedChange(false);
@@ -3087,6 +3234,7 @@ function GlobalTaskCenter({
                   <span className="global-task-row-copy">
                     <strong>{task.title}</strong>
                     <small><span>{task.ownerName}</span><span>{globalTaskStatusCopy[task.status].description}</span></small>
+                    <TaskStatusFeedback status={task.status} compact />
                   </span>
                   <ChevronRight size={16} aria-hidden="true" />
                 </button>
@@ -3096,11 +3244,12 @@ function GlobalTaskCenter({
                     onExpandedChange(false);
                   }}>查看</Button>
                 ) : null}
-              </article>
+              </motion.article>
             ))}
           </div>
-        </div>
-      ) : null}
+        </motion.div>
+        ) : null}
+      </AnimatePresence>
     </aside>
   );
 }
@@ -3719,6 +3868,8 @@ function ProjectWorkspaceRail({
   onProjectApplicationsChange?: (applicationIds: string[]) => void;
   onReferenceFile: (file: SelectedFile) => void;
 }) {
+  const reduceMotion = useReducedMotion();
+  const [hoveredTool, setHoveredTool] = useState<ProjectWorkspaceTool | null>(null);
   const { message: antMessage } = AntApp.useApp();
   const [panelWidth, setPanelWidth] = useState(420);
   const [resizing, setResizing] = useState(false);
@@ -4416,20 +4567,13 @@ function ProjectWorkspaceRail({
       const runTitle = runStageSelection
         ? `${runStageSelection.taskTitle} · 第 ${runStageSelection.stageIndex + 1} 阶段`
         : activeConversation.title === "新对话" ? "当前对话任务" : activeConversation.title;
-      const runStatus = runStageSelection
-        ? taskParticipantStatusCopy[runStageSelection.status]
-        : "已完成";
+      const runFeedbackStatus = runStageSelection?.status ?? "success";
       return (
         <section className="project-workspace-demo-panel project-run-panel" aria-label="运行记录面板">
           <WorkspacePanelHeader
             title="任务详情"
             titleAccessory={(
-              <span className="project-run-header-status">
-                {runStageSelection?.status === "success" || !runStageSelection
-                  ? <CircleCheck size={14} />
-                  : <Timer size={14} />}
-                {runStatus}
-              </span>
+              <TaskStatusFeedback status={runFeedbackStatus} compact />
             )}
             onClose={() => onActiveToolChange(null)}
           />
@@ -4448,22 +4592,42 @@ function ProjectWorkspaceRail({
               </footer>
             </article>
 
+            <TaskStatusFeedback status={runFeedbackStatus} />
+
             <section className="project-run-result-card" aria-label="任务运行结果">
               <button
                 className="project-run-result-toggle"
                 type="button"
                 aria-expanded={runResultExpanded}
+                aria-controls="project-run-result-content"
                 onClick={() => setRunResultExpanded((expanded) => !expanded)}
               >
                 <span>已处理 2 分 47 秒</span>
-                <ChevronRight className={runResultExpanded ? "is-expanded" : undefined} size={14} />
+                <motion.span
+                  animate={{ rotate: runResultExpanded ? 90 : 0 }}
+                  transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 150, damping: 22 }}
+                >
+                  <ChevronRight size={14} />
+                </motion.span>
               </button>
-              {runResultExpanded ? (
-                <div className="project-run-result-content">
-                  <strong>{activeApplicationName}</strong>
-                  <p>{runResult}</p>
-                </div>
-              ) : null}
+              <AnimatePresence initial={false}>
+                {runResultExpanded ? (
+                  <motion.div
+                    id="project-run-result-content"
+                    role="region"
+                    initial={reduceMotion ? false : { height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+                    transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 150, damping: 22 }}
+                    style={{ overflow: "hidden" }}
+                  >
+                    <div className="project-run-result-content">
+                      <strong>{activeApplicationName}</strong>
+                      <p>{runResult}</p>
+                    </div>
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </section>
           </div>
         </section>
@@ -4491,20 +4655,46 @@ function ProjectWorkspaceRail({
   return (
     <>
     <aside className={`project-workspace${activeTool ? " is-open" : ""}${resizing ? " is-resizing" : ""}`} aria-label={isStandalone ? "数字员工工作区工具" : "群组项目工作区工具"}>
-      <nav className="project-workspace-toolbar" aria-label={isStandalone ? "数字员工工作区导航" : "群组项目工作区导航"}>
+      <LayoutGroup id="project-workspace-toolbar-highlight">
+      <nav
+        className="project-workspace-toolbar"
+        aria-label={isStandalone ? "数字员工工作区导航" : "群组项目工作区导航"}
+        onPointerLeave={() => setHoveredTool(null)}
+      >
         {tools.map((tool) => (
           <Tooltip key={tool.key} placement="left" title={tool.label}>
             <Button
               className={activeTool === tool.key ? "is-active" : undefined}
               type="text"
-              icon={tool.icon}
               aria-label={tool.label}
               aria-pressed={activeTool === tool.key}
+              onPointerEnter={() => setHoveredTool(tool.key)}
+              onFocus={() => setHoveredTool(tool.key)}
+              onBlur={() => setHoveredTool(null)}
               onClick={() => toggleTool(tool.key)}
-            />
+            >
+              {activeTool === tool.key ? (
+                <motion.span
+                  aria-hidden="true"
+                  className="project-workspace-tool-highlight"
+                  layoutId="project-workspace-tool-active-highlight"
+                  transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 350, damping: 35 }}
+                />
+              ) : null}
+              {hoveredTool === tool.key && activeTool !== tool.key ? (
+                <motion.span
+                  aria-hidden="true"
+                  className="project-workspace-tool-highlight is-hover"
+                  layoutId="project-workspace-tool-hover-highlight"
+                  transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 350, damping: 35 }}
+                />
+              ) : null}
+              <span className="project-workspace-tool-icon">{tool.icon}</span>
+            </Button>
           </Tooltip>
         ))}
       </nav>
+      </LayoutGroup>
       <div
         className="project-workspace-resizer"
         role="separator"
@@ -4678,13 +4868,13 @@ function TeamResourcesPanel({
   };
 
   return (
-    <aside className="project-files-panel team-resources-panel" aria-label="团队资源">
-      <WorkspacePanelHeader title="团队资源" onClose={onClose} />
+    <aside className="project-files-panel team-resources-panel" aria-label="文件">
+      <WorkspacePanelHeader title="文件" onClose={onClose} />
       <div className="project-files-panel-body team-resources-panel-body">
         {selectedResource ? (
           <section className="work-file-preview team-resource-preview" aria-label={`${selectedResource.name}文件预览`}>
             <header className="work-file-preview-header">
-              <Button type="text" icon={<ArrowLeft size={17} />} aria-label="返回团队资源" onClick={() => setSelectedResource(null)} />
+              <Button type="text" icon={<ArrowLeft size={17} />} aria-label="返回文件" onClick={() => setSelectedResource(null)} />
               <span className="work-file-preview-icon">
                 <FileTypeIcon type={FILE_TYPE_ICON_BY_EXTENSION[selectedResource.name.split(".").pop()?.toLocaleLowerCase() ?? ""] ?? "other"} />
               </span>
@@ -4718,7 +4908,7 @@ function TeamResourcesPanel({
             </div>
           </section>
         ) : (
-        <div className="team-resource-groups" aria-label="团队资源分类">
+        <div className="team-resource-groups" aria-label="文件分类">
           {resourceGroups.map((group) => {
             const expanded = expandedGroupIds.has(group.id);
             return (
@@ -5187,8 +5377,12 @@ function DigitalEmployeeDetailModal({
   onClose: () => void;
   onCreate: (application: CatalogApplication) => void;
 }) {
+  const reduceMotion = useReducedMotion();
   if (!application) return null;
   const capabilities = applicationSkillTags[application.id];
+  const detailTransition = reduceMotion
+    ? { duration: 0 }
+    : { type: "spring" as const, stiffness: 320, damping: 32, bounce: 0 };
 
   return (
     <Modal
@@ -5215,10 +5409,12 @@ function DigitalEmployeeDetailModal({
       destroyOnHidden
     >
       <header className="skill-detail-header">
-        <Avatar className="digital-employee-detail-avatar" size={56} src={application.avatar} />
+        <motion.span layoutId={`digital-employee-avatar-${application.id}`} transition={detailTransition}>
+          <Avatar className="digital-employee-detail-avatar" size={56} src={application.avatar} />
+        </motion.span>
         <div className="skill-detail-identity">
           <div className="skill-detail-title-row">
-            <h2>{application.name}</h2>
+            <motion.h2 layoutId={`digital-employee-title-${application.id}`} transition={detailTransition}>{application.name}</motion.h2>
           </div>
           <p>{application.description}</p>
         </div>
@@ -5360,6 +5556,233 @@ type OverviewTaskRow = {
   updatedAt: string;
 };
 
+function AnimatedMetricValue({ value }: { value: number }) {
+  const reduceMotion = useReducedMotion();
+  const [displayValue, setDisplayValue] = useState(reduceMotion ? value : 0);
+  const previousValue = useRef(0);
+  const formattedValue = useMemo(
+    () => new Intl.NumberFormat("zh-CN").format(displayValue),
+    [displayValue],
+  );
+  const direction = displayValue >= previousValue.current ? 1 : -1;
+
+  useEffect(() => {
+    if (reduceMotion) {
+      setDisplayValue(value);
+      return undefined;
+    }
+    const frame = window.requestAnimationFrame(() => setDisplayValue(value));
+    return () => window.cancelAnimationFrame(frame);
+  }, [reduceMotion, value]);
+
+  useEffect(() => {
+    previousValue.current = displayValue;
+  }, [displayValue]);
+
+  return (
+    <span className="overview-metric-number" aria-label={formattedValue}>
+      {formattedValue.split("").map((character, index) => character >= "0" && character <= "9" ? (
+        <span className="overview-metric-number-digit" aria-hidden="true" key={`digit-${index}`}>
+          <AnimatePresence initial={false} mode="popLayout">
+            <motion.span
+              key={`${index}-${character}`}
+              initial={reduceMotion ? false : { opacity: 0, y: direction * 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduceMotion ? undefined : { opacity: 0, y: direction * -18 }}
+              transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 200, damping: 20, mass: 0.4 }}
+            >
+              {character}
+            </motion.span>
+          </AnimatePresence>
+        </span>
+      ) : <span className="overview-metric-number-separator" aria-hidden="true" key={`separator-${index}`}>{character}</span>)}
+    </span>
+  );
+}
+
+function ArchiveHome({
+  projects: archivedProjects,
+  onProjectOpen,
+}: {
+  projects: Project[];
+  onProjectOpen: (projectId: string) => void;
+}) {
+  return (
+    <section className="archive-home" aria-labelledby="archive-page-title">
+      <header className="archive-header">
+        <Typography.Title id="archive-page-title" level={2}>归档</Typography.Title>
+      </header>
+      <section className="archive-projects" aria-label="已归档的群组项目">
+        <div className="archive-project-list">
+          {archivedProjects.map((project) => {
+            const applicationNames = getProjectCatalogApplications(project)
+              .map((application) => application.name);
+            const floatingItems = applicationNames.length > 4
+              ? [...applicationNames.slice(0, 4), "..."]
+              : applicationNames;
+            return (
+              <article className="archive-project-item" key={project.id}>
+                <FolderFloat
+                  items={floatingItems}
+                  label={project.name}
+                  sublabel={`${applicationNames.length} 个数字员工`}
+                  trigger="hover"
+                  closeOnSelect
+                  physics
+                  drift={0.5}
+                  onFolderClick={() => onProjectOpen(project.id)}
+                  onSelect={(value, index) => console.log(value, index)}
+                  folderColor="#3f3f46"
+                  frontColor="#52525b"
+                  paperColor="#f5f5f5"
+                  itemColor="#f5f5f5"
+                  itemTextColor="#18181b"
+                  labelColor="#f5f5f5"
+                  width={200}
+                  height={148}
+                  radius={14}
+                  spread={150}
+                  lift={22}
+                  rowGap={42}
+                  tilt={8}
+                  flapAngle={34}
+                  restAngle={16}
+                  openDuration={520}
+                  stagger={45}
+                  bounce={0.3}
+                />
+              </article>
+            );
+          })}
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function ArchiveProjectHistory({
+  project,
+  conversations: projectConversations,
+  selectedConversationId,
+  onBack,
+  onSelectConversation,
+}: {
+  project?: Project;
+  conversations: Conversation[];
+  selectedConversationId?: string;
+  onBack: () => void;
+  onSelectConversation: (conversationId: string) => void;
+}) {
+  const sortedConversations = useMemo(
+    () => [...projectConversations].sort(
+      (left, right) => (
+        getNavigationUpdatedAtSortValue(right.updatedAt)
+        - getNavigationUpdatedAtSortValue(left.updatedAt)
+      ),
+    ),
+    [projectConversations],
+  );
+  const selectedConversation = sortedConversations.find(
+    (conversation) => conversation.id === selectedConversationId,
+  ) ?? sortedConversations[0];
+
+  return (
+    <section className="archive-history" aria-labelledby="archive-history-title">
+      <header className="archive-history-header">
+        <Button
+          type="text"
+          icon={<ArrowLeft size={18} />}
+          aria-label="返回归档"
+          title="返回归档"
+          onClick={onBack}
+        />
+        <Typography.Title id="archive-history-title" level={4}>
+          {project?.name ?? "已归档群组项目"}
+        </Typography.Title>
+      </header>
+
+      {!project || !selectedConversation ? (
+        <div className="archive-history-empty">
+          <Empty description={project ? "暂无历史对话" : "未找到该群组项目"} />
+        </div>
+      ) : (
+        <div className="archive-history-layout">
+          <nav className="archive-history-list" aria-label={`${project.name}的历史对话`}>
+            <div className="archive-history-list-heading">
+              <span>历史对话</span>
+              <Typography.Text type="secondary">{sortedConversations.length}</Typography.Text>
+            </div>
+            {sortedConversations.map((conversation) => {
+              const active = conversation.id === selectedConversation.id;
+              return (
+                <div
+                  className="application-conversation-history-row"
+                  data-active={active}
+                  key={conversation.id}
+                >
+                  <button
+                    type="button"
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => onSelectConversation(conversation.id)}
+                  >
+                    <span title={conversation.title}>{conversation.title}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </nav>
+
+          <article className="archive-history-thread" aria-labelledby="archive-conversation-title">
+            <header className="archive-history-thread-header">
+              <Typography.Title id="archive-conversation-title" level={4}>
+                {selectedConversation.title}
+              </Typography.Title>
+              <Typography.Text className="archive-history-thread-time" type="secondary">
+                {selectedConversation.updatedAt}
+              </Typography.Text>
+            </header>
+            <div className="archive-history-messages">
+              {selectedConversation.messages.map((message) => {
+                const messageApplicationId = message.role === "assistant"
+                  ? message.metadata?.custom?.catalogApplicationId
+                  : undefined;
+                const messageApplication = typeof messageApplicationId === "string"
+                  ? applicationCatalog.find((application) => application.id === messageApplicationId)
+                  : getConversationCatalogApplication(selectedConversation);
+                const author = message.role === "user" ? "你" : messageApplication?.name ?? "数字员工";
+                return (
+                  <section
+                    className={message.role === "user"
+                      ? "archive-history-message is-user"
+                      : "archive-history-message is-assistant"}
+                    key={message.id}
+                  >
+                    <Avatar
+                      className="application-avatar-surface"
+                      size={28}
+                      src={message.role === "assistant" ? messageApplication?.avatar : undefined}
+                    >
+                      {message.role === "user" ? "你" : undefined}
+                    </Avatar>
+                    <div>
+                      <strong>{author}</strong>
+                      <p>{getStoredMessageText(message)}</p>
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+            <footer className="archive-history-readonly-note">
+              <Archive size={15} />
+              该群组项目已归档，仅可查看历史对话
+            </footer>
+          </article>
+        </div>
+      )}
+    </section>
+  );
+}
+
 function OverviewHome({
   conversations,
   projects,
@@ -5375,6 +5798,7 @@ function OverviewHome({
   const [scope, setScope] = useState<"all" | "project" | "employee">("all");
   const [status, setStatus] = useState<OverviewStatusFilter>("all");
   const [period, setPeriod] = useState<"week" | "month" | "all">("month");
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
   const [page, setPage] = useState(1);
   const pageSize = 10;
   const taskByConversation = useMemo(
@@ -5445,7 +5869,7 @@ function OverviewHome({
       <header className="overview-header">
         <div>
           <Title level={2}>概览</Title>
-          <Text type="secondary">从任务出发，查看数字员工的工作进度、待办操作与交付结果。</Text>
+          <Text type="secondary">从任务出发，查看数字员工的工作进度、待办操作与交付结果</Text>
         </div>
       </header>
 
@@ -5483,7 +5907,7 @@ function OverviewHome({
               }}
             >
               <span className="overview-metric-top"><span>{metric.label}</span><span className="overview-metric-icon" aria-hidden="true">{metric.icon}</span></span>
-              <strong>{metric.value}<span className="overview-metric-unit">项</span></strong>
+              <strong><AnimatedMetricValue key={`${metric.filter}-${period}`} value={metric.value} /><span className="overview-metric-unit">项</span></strong>
               <span className="overview-metric-foot"><span>{metric.note}</span><ChevronRight size={16} aria-hidden="true" /></span>
             </button>
           ))}
@@ -5515,51 +5939,64 @@ function OverviewHome({
       <section className="overview-all-tasks" aria-labelledby="overview-all-tasks-title">
         <header>
           <div className="overview-table-heading"><Title id="overview-all-tasks-title" level={4}>全部任务</Title></div>
-          <span><ListFilter size={16} /> 列表</span>
+          <div className="overview-table-toolbar">
+            <div className="overview-task-search">
+              <Input
+                allowClear
+                value={query}
+                prefix={<Search size={15} />}
+                placeholder="搜索任务、数字员工或群组项目"
+                aria-label="搜索任务"
+                onChange={(event) => setQuery(event.target.value)}
+              />
+            </div>
+            <div className="overview-table-filters">
+              <Select
+                value={scope}
+                aria-label="筛选任务归属"
+                options={[
+                  { label: "全部归属", value: "all" },
+                  { label: "群组项目", value: "project" },
+                  { label: "独立数字员工", value: "employee" },
+                ]}
+                onChange={setScope}
+              />
+              <Select
+                value={status}
+                aria-label="筛选任务状态"
+                options={[
+                  { label: "全部状态", value: "all" },
+                  { label: "执行中", value: "running" },
+                  { label: "需要操作", value: "attention" },
+                  { label: "已结束", value: "completed" },
+                  { label: "已完成", value: "success" },
+                  { label: "执行失败", value: "error" },
+                ]}
+                onChange={setStatus}
+              />
+              <Select
+                value={period}
+                aria-label="筛选任务时间"
+                options={[
+                  { label: "最近 7 天", value: "week" },
+                  { label: "最近一个月", value: "month" },
+                  { label: "全部时间", value: "all" },
+                ]}
+                onChange={setPeriod}
+              />
+            </div>
+            <Segmented<"list" | "grid">
+              className="overview-view-switch"
+              value={viewMode}
+              options={[
+                { label: <span className="overview-view-label">列表视图</span>, value: "list", icon: <List size={14} />, title: "列表视图" },
+                { label: <span className="overview-view-label">卡片视图</span>, value: "grid", icon: <LayoutGrid size={14} />, title: "卡片视图" },
+              ]}
+              onChange={setViewMode}
+              aria-label="任务视图"
+            />
+          </div>
         </header>
-        <div className="overview-filters">
-          <Input
-            allowClear
-            value={query}
-            prefix={<Search size={15} />}
-            placeholder="搜索任务、数字员工或群组项目"
-            aria-label="搜索任务"
-            onChange={(event) => setQuery(event.target.value)}
-          />
-          <Select
-            value={scope}
-            aria-label="筛选任务归属"
-            options={[
-              { label: "全部归属", value: "all" },
-              { label: "群组项目", value: "project" },
-              { label: "独立数字员工", value: "employee" },
-            ]}
-            onChange={setScope}
-          />
-          <Select
-            value={status}
-            aria-label="筛选任务状态"
-            options={[
-              { label: "全部状态", value: "all" },
-              { label: "执行中", value: "running" },
-              { label: "需要操作", value: "attention" },
-              { label: "已结束", value: "completed" },
-              { label: "已完成", value: "success" },
-              { label: "执行失败", value: "error" },
-            ]}
-            onChange={setStatus}
-          />
-          <Select
-            value={period}
-            aria-label="筛选任务时间"
-            options={[
-              { label: "最近 7 天", value: "week" },
-              { label: "最近一个月", value: "month" },
-              { label: "全部时间", value: "all" },
-            ]}
-            onChange={setPeriod}
-          />
-        </div>
         <div className="overview-task-table" role="table" aria-label="全部任务列表">
           <div className="overview-task-table-head" role="row">
             <span>任务</span><span>执行者</span><span>归属</span><span>状态</span><span>最近更新</span>
@@ -5809,9 +6246,9 @@ function ApplicationsHome({
                       aria-label={`查看${application.name}详情`}
                       onClick={() => setSelectedApplication(application)}
                     >
-                      <span className="application-card-title">{application.name}</span>
+                      <motion.span className="application-card-title" layoutId={`digital-employee-title-${application.id}`}>{application.name}</motion.span>
                       <span className="application-card-portrait">
-                        <img className="application-card-cover" src={application.cover} alt="" />
+                        <motion.img className="application-card-cover" layoutId={`digital-employee-avatar-${application.id}`} src={application.cover} alt="" />
                       </span>
                       <span className="application-card-details">
                         <span className="application-card-description">{application.description}</span>
@@ -7515,6 +7952,7 @@ type ConversationNavigationProps = {
   ) => void;
   onCreateStandaloneConversation: () => void;
   onApplicationsOpen: () => void;
+  onArchiveOpen: () => void;
   onOverviewOpen: () => void;
   onDarkModeChange: (value: boolean) => void;
   onDelete: (conversation: Conversation) => void;
@@ -7527,6 +7965,46 @@ type ConversationNavigationProps = {
   onSidebarExpand: () => void;
   onSidebarClose: () => void;
 };
+
+const expandedNavigationHighlightLayoutId = "expanded-navigation-active-highlight";
+const expandedNavigationHoverHighlightLayoutId = "expanded-navigation-hover-highlight";
+const navigationPinSpring = { type: "spring" as const, stiffness: 340, damping: 32, bounce: 0 };
+
+type NavigationPinFeedback = {
+  label: string;
+  pinned: boolean;
+  previousPinnedKeys: string[];
+};
+
+function NavigationActiveHighlight() {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <motion.span
+      aria-hidden="true"
+      className="navigation-active-highlight"
+      layoutId={expandedNavigationHighlightLayoutId}
+      transition={reduceMotion
+        ? { duration: 0 }
+        : { type: "spring", stiffness: 200, damping: 25 }}
+    />
+  );
+}
+
+function NavigationHoverHighlight() {
+  const reduceMotion = useReducedMotion();
+
+  return (
+    <motion.span
+      aria-hidden="true"
+      className="navigation-active-highlight navigation-hover-highlight"
+      layoutId={expandedNavigationHoverHighlightLayoutId}
+      transition={reduceMotion
+        ? { duration: 0 }
+        : { type: "spring", stiffness: 200, damping: 25 }}
+    />
+  );
+}
 
 function ConversationNavigation({
   collapsed,
@@ -7545,6 +8023,7 @@ function ConversationNavigation({
   onCreateProject,
   onCreateStandaloneConversation,
   onApplicationsOpen,
+  onArchiveOpen,
   onOverviewOpen,
   onDarkModeChange,
   onDelete,
@@ -7558,11 +8037,14 @@ function ConversationNavigation({
   onSidebarClose,
 }: ConversationNavigationProps) {
   const { token: navigationToken } = antdTheme.useToken();
+  const reduceMotion = useReducedMotion();
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeTeamId, setActiveTeamId] = useState(teamOptions[0].id);
   const [navigationMode, setNavigationMode] = useState<"daily" | "app-builder">("daily");
   const [collapsedHistoryOpen, setCollapsedHistoryOpen] = useState(false);
+  const [hoveredNavigationKey, setHoveredNavigationKey] = useState<string | null>(null);
   const [navigationContentType, setNavigationContentType] = useState<"all" | "conversation" | "project">("all");
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [newProjectName, setNewProjectName] = useState("");
@@ -7570,6 +8052,16 @@ function ConversationNavigation({
   const [newProjectAdministratorId, setNewProjectAdministratorId] = useState<string | null>(null);
   const [newProjectDescription, setNewProjectDescription] = useState("");
   const [newProjectApplicationSearch, setNewProjectApplicationSearch] = useState("");
+  const [pinnedNavigationKeys, setPinnedNavigationKeys] = useState<string[]>(() => {
+    try {
+      const storedKeys = JSON.parse(window.localStorage.getItem("argus:pinned-navigation-keys") ?? "[]");
+      return Array.isArray(storedKeys) ? storedKeys.filter((key): key is string => typeof key === "string") : [];
+    } catch {
+      return [];
+    }
+  });
+  const [pinFeedback, setPinFeedback] = useState<NavigationPinFeedback | null>(null);
+  const pinFeedbackTimerRef = useRef<number | null>(null);
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("zh-CN");
   const navigationSortNow = new Date();
   const activeTeam = teamOptions.find((team) => team.id === activeTeamId) ?? teamOptions[0];
@@ -7664,6 +8156,7 @@ function ConversationNavigation({
       return {
         type: "project" as const,
         key: `project:${project.id}`,
+        pinned: pinnedNavigationKeys.includes(`project:${project.id}`),
         project,
         latestConversation: latestProjectConversation,
         sortValue: latestProjectConversation
@@ -7674,10 +8167,24 @@ function ConversationNavigation({
     ...(navigationContentType === "project" ? [] : filteredStandaloneConversationGroups.map((group) => ({
       type: "conversation" as const,
       key: group.key,
+      pinned: pinnedNavigationKeys.includes(group.key),
       group,
       sortValue: getNavigationUpdatedAtSortValue(group.conversations[0].updatedAt, navigationSortNow),
     }))),
-  ].sort((left, right) => right.sortValue - left.sortValue);
+  ].sort((left, right) => Number(right.pinned) - Number(left.pinned) || right.sortValue - left.sortValue);
+  const hoveredPrimaryNavigationKey = (
+    hoveredNavigationKey === "new-conversation"
+    || hoveredNavigationKey === "overview"
+    || hoveredNavigationKey === "applications"
+  ) ? hoveredNavigationKey : null;
+  const activePrimaryNavigationKey = newConversationActive
+    ? "new-conversation"
+    : overviewPageActive
+      ? "overview"
+      : applicationsPageActive
+        ? "applications"
+        : null;
+  const primaryNavigationHighlightKey = hoveredPrimaryNavigationKey ?? activePrimaryNavigationKey;
   const activeNavigationMessageCount = conversations.find(
     (conversation) => conversation.id === activeConversationId,
   )?.messages.length ?? 0;
@@ -7734,6 +8241,42 @@ function ConversationNavigation({
     setCollapsedHistoryOpen(false);
   }, [activeConversationId, activeProjectId, applicationsPageActive, collapsed]);
 
+  useEffect(() => {
+    window.localStorage.setItem("argus:pinned-navigation-keys", JSON.stringify(pinnedNavigationKeys));
+  }, [pinnedNavigationKeys]);
+
+  useEffect(() => () => {
+    if (pinFeedbackTimerRef.current !== null) {
+      window.clearTimeout(pinFeedbackTimerRef.current);
+    }
+  }, []);
+
+  const toggleNavigationPin = (navigationKey: string, label: string) => {
+    if (pinFeedbackTimerRef.current !== null) {
+      window.clearTimeout(pinFeedbackTimerRef.current);
+    }
+    const previousPinnedKeys = pinnedNavigationKeys;
+    const pinned = !previousPinnedKeys.includes(navigationKey);
+    setPinnedNavigationKeys(pinned
+      ? [...previousPinnedKeys, navigationKey]
+      : previousPinnedKeys.filter((key) => key !== navigationKey));
+    setPinFeedback({ label, pinned, previousPinnedKeys });
+    pinFeedbackTimerRef.current = window.setTimeout(() => {
+      setPinFeedback(null);
+      pinFeedbackTimerRef.current = null;
+    }, 3600);
+  };
+
+  const undoNavigationPin = () => {
+    if (!pinFeedback) return;
+    if (pinFeedbackTimerRef.current !== null) {
+      window.clearTimeout(pinFeedbackTimerRef.current);
+    }
+    pinFeedbackTimerRef.current = null;
+    setPinnedNavigationKeys(pinFeedback.previousPinnedKeys);
+    setPinFeedback(null);
+  };
+
   const changeNavigationMode = (value: "daily" | "app-builder") => {
     setNavigationMode(value);
     if (value === "app-builder") {
@@ -7754,7 +8297,12 @@ function ConversationNavigation({
         )),
       );
       return (
-        <div className="navigation-project-group" key={project.id}>
+        <motion.div
+          className="navigation-project-group"
+          key={project.id}
+          layout={!reduceMotion}
+          transition={reduceMotion ? { duration: 0 } : navigationPinSpring}
+        >
           <div
             className="navigation-content-row navigation-project-row"
             data-active={projectNavigationActive && project.id === activeProjectId}
@@ -7774,12 +8322,9 @@ function ConversationNavigation({
             <Dropdown
               trigger={["click"]}
               menu={{
-                items: [
-                  { key: "rename", icon: <Pencil size={14} />, label: "重命名群组项目" },
-                  { type: "divider" },
-                  { key: "archive", danger: true, icon: <Archive size={14} />, label: "归档" },
-                ],
+                items: getNavigationProjectMenuItems(item.pinned),
                 onClick: ({ key }) => {
+                  if (key === "pin") toggleNavigationPin(item.key, project.name);
                   if (key === "rename") onRenameProject(project);
                   if (key === "archive") onArchiveProject(project);
                 },
@@ -7788,7 +8333,7 @@ function ConversationNavigation({
               <Button className="navigation-icon-button" type="text" size="small" icon={<MoreHorizontal size={14} />} aria-label={`${project.name}更多操作`} />
             </Dropdown>
           </div>
-        </div>
+        </motion.div>
       );
     }
 
@@ -7805,10 +8350,12 @@ function ConversationNavigation({
       )),
     );
     return (
-      <div
+      <motion.div
         className="navigation-content-row navigation-conversation-row"
         data-active={groupActive}
         key={group.key}
+        layout={!reduceMotion}
+        transition={reduceMotion ? { duration: 0 } : navigationPinSpring}
       >
         <button className="navigation-content-main" type="button" onClick={() => onSelect(conversation.id)}>
           <span className="navigation-task-icon-shell"><NavigationConversationIcon conversation={conversation} size={40} /></span>
@@ -7826,8 +8373,9 @@ function ConversationNavigation({
         <Dropdown
           trigger={["click"]}
           menu={{
-            items: conversationMoreMenuItems,
+            items: getNavigationConversationMenuItems(item.pinned),
             onClick: ({ key }) => {
+              if (key === "pin") toggleNavigationPin(item.key, label);
               if (key === "rename") onRename(conversation);
               if (key === "delete") onDelete(conversation);
             },
@@ -7835,7 +8383,7 @@ function ConversationNavigation({
         >
           <Button className="navigation-icon-button" type="text" size="small" icon={<MoreHorizontal size={16} />} aria-label={`${label}更多操作`} />
         </Dropdown>
-      </div>
+      </motion.div>
     );
   });
 
@@ -7850,6 +8398,17 @@ function ConversationNavigation({
         <span className="font-strong">{currentUser.name}</span>
       </div>
       <div className="settings-menu">
+        <button
+          className="settings-menu-item"
+          type="button"
+          onClick={() => {
+            setSettingsOpen(false);
+            onArchiveOpen();
+          }}
+        >
+          <Archive size={16} />
+          <span>归档</span>
+        </button>
         <button className="settings-menu-item" type="button" onClick={() => onPrototypeAction("账号设置")}>
           <UserRoundCog size={16} />
           <span>账号设置</span>
@@ -7879,9 +8438,13 @@ function ConversationNavigation({
     </div>
   );
   return (
-    <nav
+    <motion.nav
+      key={collapsed ? "collapsed-navigation" : "expanded-navigation"}
       className={collapsed ? "conversation-navigation conversation-navigation-collapsed" : "conversation-navigation"}
       aria-label="Argus 工作台导航"
+      initial={reduceMotion ? false : { opacity: 0, x: collapsed ? -4 : 4 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.2, ease: [0.2, 0, 0, 1] }}
       style={{ "--navigation-icon-color": navigationToken.colorTextQuaternary } as React.CSSProperties}
     >
       {collapsed ? (
@@ -8008,6 +8571,8 @@ function ConversationNavigation({
               </Button>
             </Tooltip>
             <Dropdown
+              open={settingsOpen}
+              onOpenChange={setSettingsOpen}
               trigger={["click"]}
               placement="topRight"
               menu={{ items: [] }}
@@ -8062,14 +8627,17 @@ function ConversationNavigation({
         />
       ) : null}
 
-      <div className="navigation-fixed-links" aria-label="工作区导航">
+      <LayoutGroup id="expanded-navigation-active-background">
+      <div className="navigation-fixed-links" aria-label="工作区导航" onPointerLeave={() => setHoveredNavigationKey(null)}>
         <button
           className="navigation-primary-action"
           data-active={newConversationActive}
           type="button"
           aria-label="新对话"
+          onPointerEnter={() => setHoveredNavigationKey("new-conversation")}
           onClick={onCreateStandaloneConversation}
         >
+          {primaryNavigationHighlightKey === "new-conversation" ? <NavigationActiveHighlight /> : null}
           <MessageCirclePlus size={16} />
           <span>新对话</span>
         </button>
@@ -8078,8 +8646,10 @@ function ConversationNavigation({
           data-active={overviewPageActive}
           type="button"
           aria-label="概览"
+          onPointerEnter={() => setHoveredNavigationKey("overview")}
           onClick={onOverviewOpen}
         >
+          {primaryNavigationHighlightKey === "overview" ? <NavigationActiveHighlight /> : null}
           <Gauge size={16} />
           <span>概览</span>
         </button>
@@ -8088,8 +8658,10 @@ function ConversationNavigation({
           data-active={applicationsPageActive}
           type="button"
           aria-label="人才与技能"
+          onPointerEnter={() => setHoveredNavigationKey("applications")}
           onClick={onApplicationsOpen}
         >
+          {primaryNavigationHighlightKey === "applications" ? <NavigationActiveHighlight /> : null}
           <Store size={16} /><span>人才与技能</span>
         </button>
       </div>
@@ -8124,7 +8696,7 @@ function ConversationNavigation({
               </Dropdown>
             </Tooltip>
           </header>
-          <div className="navigation-item-list">
+          <div className="navigation-item-list" onPointerLeave={() => setHoveredNavigationKey(null)}>
             {navigationItems.map((item) => {
               if (item.type === "project") {
                 const { project, latestConversation } = item;
@@ -8138,11 +8710,19 @@ function ConversationNavigation({
                   )),
                 );
                 return (
-                  <div className="navigation-project-group" key={project.id}>
+                  <motion.div
+                    className="navigation-project-group"
+                    key={project.id}
+                    layout={!reduceMotion}
+                    transition={reduceMotion ? { duration: 0 } : navigationPinSpring}
+                  >
                     <div
                       className="navigation-content-row navigation-project-row"
                       data-active={projectNavigationActive && project.id === activeProjectId}
+                      onPointerEnter={() => setHoveredNavigationKey(item.key)}
                     >
+                      {!hoveredPrimaryNavigationKey && projectNavigationActive && project.id === activeProjectId ? <NavigationActiveHighlight /> : null}
+                      {hoveredNavigationKey === item.key && !(projectNavigationActive && project.id === activeProjectId) ? <NavigationHoverHighlight /> : null}
                       <button className="navigation-content-main navigation-project-main" type="button" onClick={() => onProjectSelect(project.id)}>
                         <span className="navigation-task-icon-shell"><NavigationProjectIcon project={project} /></span>
                         <span className="navigation-content-copy">
@@ -8158,12 +8738,9 @@ function ConversationNavigation({
                       <Dropdown
                         trigger={["click"]}
                         menu={{
-                          items: [
-                            { key: "rename", icon: <Pencil size={14} />, label: "重命名群组项目" },
-                            { type: "divider" },
-                            { key: "archive", danger: true, icon: <Archive size={14} />, label: "归档" },
-                          ],
+                          items: getNavigationProjectMenuItems(item.pinned),
                           onClick: ({ key }) => {
+                            if (key === "pin") toggleNavigationPin(item.key, project.name);
                             if (key === "rename") onRenameProject(project);
                             if (key === "archive") onArchiveProject(project);
                           },
@@ -8172,7 +8749,7 @@ function ConversationNavigation({
                         <Button className="navigation-icon-button" type="text" size="small" icon={<MoreHorizontal size={14} />} aria-label={`${project.name}更多操作`} />
                       </Dropdown>
                     </div>
-                  </div>
+                  </motion.div>
                 );
               }
 
@@ -8191,11 +8768,16 @@ function ConversationNavigation({
                 )),
               );
               return (
-                <div
+                <motion.div
                   className="navigation-content-row navigation-conversation-row"
                   data-active={groupActive}
                   key={group.key}
+                  onPointerEnter={() => setHoveredNavigationKey(item.key)}
+                  layout={!reduceMotion}
+                  transition={reduceMotion ? { duration: 0 } : navigationPinSpring}
                 >
+                  {!hoveredPrimaryNavigationKey && groupActive ? <NavigationActiveHighlight /> : null}
+                  {hoveredNavigationKey === item.key && !groupActive ? <NavigationHoverHighlight /> : null}
                   <button className="navigation-content-main" type="button" onClick={() => onSelect(conversation.id)}>
                     <span className="navigation-task-icon-shell"><NavigationConversationIcon conversation={conversation} size={40} /></span>
                     <span className="navigation-content-copy">
@@ -8212,8 +8794,9 @@ function ConversationNavigation({
                   <Dropdown
                     trigger={["click"]}
                     menu={{
-                      items: conversationMoreMenuItems,
+                      items: getNavigationConversationMenuItems(item.pinned),
                       onClick: ({ key }) => {
+                        if (key === "pin") toggleNavigationPin(item.key, label);
                         if (key === "rename") onRename(conversation);
                         if (key === "delete") onDelete(conversation);
                       },
@@ -8221,7 +8804,7 @@ function ConversationNavigation({
                   >
                     <Button className="navigation-icon-button" type="text" size="small" icon={<MoreHorizontal size={16} />} aria-label={`${label}更多操作`} />
                   </Dropdown>
-                </div>
+                </motion.div>
               );
             })}
             {navigationItems.length === 0 ? (
@@ -8230,6 +8813,24 @@ function ConversationNavigation({
           </div>
         </section>
       </div>
+      </LayoutGroup>
+
+      <AnimatePresence initial={false}>
+        {pinFeedback ? (
+          <motion.div
+            aria-live="polite"
+            className="navigation-pin-feedback"
+            initial={reduceMotion ? false : { opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduceMotion ? undefined : { opacity: 0, y: 5, scale: 0.98 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.2, 0, 0, 1] }}
+          >
+            <CircleCheck aria-hidden="true" size={14} />
+            <span>{pinFeedback.pinned ? `已置顶${pinFeedback.label}` : `已取消置顶${pinFeedback.label}`}</span>
+            <Button type="link" size="small" icon={<RotateCcw size={13} />} onClick={undoNavigationPin}>撤销</Button>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       <div className="navigation-mode-switch">
         <Segmented<"daily" | "app-builder">
@@ -8257,6 +8858,8 @@ function ConversationNavigation({
             </button>
           </Dropdown>
           <Dropdown
+            open={settingsOpen}
+            onOpenChange={setSettingsOpen}
             trigger={["click"]}
             placement="topRight"
             menu={{ items: [] }}
@@ -8368,7 +8971,7 @@ function ConversationNavigation({
           </div>
         </div>
       </Modal>
-    </nav>
+    </motion.nav>
   );
 }
 
@@ -8681,31 +9284,60 @@ function NewConversationTargetBrowser({
   onProjectOpen: (projectId: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<"applications" | "projects">("applications");
+  const reduceMotion = useReducedMotion();
   const items = activeTab === "applications" ? applications : projects;
+  const tabTransition = reduceMotion
+    ? { duration: 0 }
+    : { type: "spring" as const, stiffness: 350, damping: 35 };
 
   return (
     <section className="new-conversation-target-browser" aria-label="选择数字员工或群组项目">
-      <div className="new-conversation-target-tabs" role="tablist" aria-label="对话目标类型">
-        <button
-          className={activeTab === "applications" ? "is-active" : ""}
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "applications"}
-          onClick={() => setActiveTab("applications")}
-        >
-          数字员工
-        </button>
-        <button
-          className={activeTab === "projects" ? "is-active" : ""}
-          type="button"
-          role="tab"
-          aria-selected={activeTab === "projects"}
-          onClick={() => setActiveTab("projects")}
-        >
-          群组项目
-        </button>
-      </div>
-      <div className="new-conversation-target-grid" role="tabpanel">
+      <LayoutGroup id="new-conversation-target-tabs">
+        <div className="new-conversation-target-tabs" role="tablist" aria-label="对话目标类型">
+          <button
+            className={activeTab === "applications" ? "is-active" : ""}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "applications"}
+            onClick={() => setActiveTab("applications")}
+          >
+            {activeTab === "applications" ? (
+              <motion.span
+                className="new-conversation-target-selection"
+                layoutId="new-conversation-target-selection"
+                transition={tabTransition}
+              />
+            ) : null}
+            <span className="new-conversation-target-tab-label">数字员工</span>
+          </button>
+          <button
+            className={activeTab === "projects" ? "is-active" : ""}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "projects"}
+            onClick={() => setActiveTab("projects")}
+          >
+            {activeTab === "projects" ? (
+              <motion.span
+                className="new-conversation-target-selection"
+                layoutId="new-conversation-target-selection"
+                transition={tabTransition}
+              />
+            ) : null}
+            <span className="new-conversation-target-tab-label">群组项目</span>
+          </button>
+        </div>
+      </LayoutGroup>
+      <AnimatePresence initial={false} mode="wait">
+      <motion.div
+        className="new-conversation-target-grid"
+        role="tabpanel"
+        key={activeTab}
+        initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
+        transition={{ duration: reduceMotion ? 0 : 0.16 }}
+      >
         {activeTab === "applications"
           ? applications.map((application) => (
               <button
@@ -8742,7 +9374,8 @@ function NewConversationTargetBrowser({
             {activeTab === "applications" ? "暂无数字员工" : "暂无群组项目"}
           </div>
         ) : null}
-      </div>
+      </motion.div>
+      </AnimatePresence>
     </section>
   );
 }
@@ -8760,7 +9393,7 @@ function NewConversationPrompt({
   project?: Project | null;
   onSuggestion: (prompt: string) => void;
 }) {
-  const prompt = application ? "你好，今天我能帮你什么？" : "我能为你做什么？";
+  const prompt = application ? "你好，今天我能帮你什么？" : "Hi, 我可以帮做什么";
   const [visibleText, setVisibleText] = useState("");
 
   useEffect(() => {
@@ -8831,10 +9464,10 @@ function NewConversationPrompt({
         alt=""
         aria-hidden="true"
       />
-      <h1 className="new-conversation-prompt" aria-label={prompt}>
+      <h2 className="new-conversation-prompt" aria-label={prompt}>
         <span aria-hidden="true">{visibleText}</span>
         {visibleText.length < prompt.length ? <span className="typewriter-caret" aria-hidden="true" /> : null}
-      </h1>
+      </h2>
     </div>
   );
 }

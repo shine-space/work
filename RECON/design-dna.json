@@ -1,0 +1,36 @@
+{
+  "name": "Coze-inspired Argus workspace",
+  "mode": "visual-structural-reconstruction",
+  "source_checked_at": "2026-09-19",
+  "design_system": {
+    "shell": {
+      "sidebar_expanded_px": 276,
+      "sidebar_collapsed_px": 0,
+      "utility_rail_px": 48,
+      "outer_gutter_px": 8
+    },
+    "shape": {
+      "panel_radius_px": 10,
+      "composer_radius_px": 22,
+      "control_radius_px": 8
+    },
+    "color_direction": "neutral enterprise gray with Ant Design semantic tokens",
+    "typography": "compact system sans-serif"
+  },
+  "design_style": {
+    "density": "compact",
+    "hierarchy": "navigation, task surface, utility rail",
+    "signature_element": "sidebar fully disappears instead of becoming an icon rail"
+  },
+  "visual_effects": {
+    "effect_intensity": "lightweight-css",
+    "motion": "short state transitions with reduced-motion support",
+    "decoration": "minimal borders, subtle fills and restrained shadows"
+  },
+  "replacement_rules": [
+    "Never use Coze branding or user content",
+    "Use Argus project and Agent concepts",
+    "Use the existing Ant Design theme source",
+    "Keep unavailable integrations visibly framed as demo entry points"
+  ]
+}
