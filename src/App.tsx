@@ -186,6 +186,7 @@ type ConversationTaskState = {
   errorMessage?: string;
 };
 const SHOW_TASK_ISLAND_PROFILE_ON_HOVER = false;
+const TASK_ISLAND_IDLE_HIDE_DELAY = 10_000;
 
 const taskStatusPriority: Record<ConversationTaskState["status"], number> = {
   waiting: 4,
@@ -1269,6 +1270,7 @@ function ConversationWorkspace({
 }: ConversationWorkspaceProps) {
   const { message: antMessage, modal } = AntApp.useApp();
   const { token: themeToken } = antdTheme.useToken();
+  const reduceTaskIslandMotion = useReducedMotion();
   const [projectList, setProjectList] = useState<Project[]>(projects);
   const [conversations, setConversations] = useState(initialConversations);
   const [skillInstallations, setSkillInstallations] = useState<SkillInstallation[]>(readSkillInstallations);
@@ -1291,7 +1293,10 @@ function ConversationWorkspace({
   const [projectFileToOpenId, setProjectFileToOpenId] = useState<string | null>(null);
   const taskControllersRef = useRef(new Map<string, AbortController>());
   const globalTaskViewSnapshotRef = useRef<ConversationTaskState[]>([]);
+  const taskIslandIdleHideTimerRef = useRef<number | null>(null);
+  const taskIslandPointerInsideRef = useRef(false);
   const composerPromptRef = useRef<((prompt: string) => void) | null>(null);
+  const [taskIslandIdleVisible, setTaskIslandIdleVisible] = useState(false);
 
   useEffect(() => {
     window.localStorage.setItem(SKILL_INSTALLATIONS_STORAGE_KEY, JSON.stringify(skillInstallations));
@@ -1417,6 +1422,86 @@ function ConversationWorkspace({
   const activeTask = conversationTasks[activeConversationId];
   const activeTaskIslandStatus: TaskIslandStatus = activeTask?.status ?? "idle";
   const activeRuntimeError = activeTask?.status === "error" ? activeTask.errorMessage : null;
+  const activeConversationIsEmpty = isUnsentConversationDraft(activeConversation);
+  const globalTaskCenterEnabled = !activeConversationIsEmpty;
+  const hasVisibleGlobalTask = globalTaskCenterEnabled && taskList.some((task) => (
+    task.conversationId !== activeConversationId
+    && viewedTaskVersions[task.conversationId] !== task.updatedAt
+  ));
+  const hasTaskIslandSubject = Boolean(
+    isStandaloneConversation ? activeStandaloneApplication : activeProject,
+  );
+  const hasVisibleTaskIslandActivity = Boolean(activeTask) || hasVisibleGlobalTask;
+  const taskIslandVisible = hasVisibleTaskIslandActivity
+    || (hasTaskIslandSubject && taskIslandIdleVisible);
+
+  const clearTaskIslandIdleHideTimer = useCallback(() => {
+    if (taskIslandIdleHideTimerRef.current === null) return;
+    window.clearTimeout(taskIslandIdleHideTimerRef.current);
+    taskIslandIdleHideTimerRef.current = null;
+  }, []);
+
+  const revealIdleTaskIsland = useCallback(() => {
+    if (!hasTaskIslandSubject || hasVisibleTaskIslandActivity) return;
+    clearTaskIslandIdleHideTimer();
+    setTaskIslandIdleVisible(true);
+  }, [clearTaskIslandIdleHideTimer, hasTaskIslandSubject, hasVisibleTaskIslandActivity]);
+
+  const scheduleIdleTaskIslandHide = useCallback(() => {
+    if (
+      !hasTaskIslandSubject
+      || hasVisibleTaskIslandActivity
+      || taskOverlay !== null
+    ) return;
+    clearTaskIslandIdleHideTimer();
+    taskIslandIdleHideTimerRef.current = window.setTimeout(() => {
+      setTaskIslandIdleVisible(false);
+      taskIslandIdleHideTimerRef.current = null;
+    }, TASK_ISLAND_IDLE_HIDE_DELAY);
+  }, [
+    clearTaskIslandIdleHideTimer,
+    hasTaskIslandSubject,
+    hasVisibleTaskIslandActivity,
+    taskOverlay,
+  ]);
+
+  const handleTaskIslandPointerEnter = useCallback(() => {
+    taskIslandPointerInsideRef.current = true;
+    clearTaskIslandIdleHideTimer();
+    revealIdleTaskIsland();
+  }, [clearTaskIslandIdleHideTimer, revealIdleTaskIsland]);
+
+  const handleTaskIslandPointerLeave = useCallback(() => {
+    taskIslandPointerInsideRef.current = false;
+    scheduleIdleTaskIslandHide();
+  }, [scheduleIdleTaskIslandHide]);
+
+  useEffect(() => {
+    clearTaskIslandIdleHideTimer();
+    setTaskIslandIdleVisible(false);
+    taskIslandPointerInsideRef.current = false;
+  }, [activeConversationId, clearTaskIslandIdleHideTimer]);
+
+  useEffect(() => {
+    if (hasVisibleTaskIslandActivity) {
+      clearTaskIslandIdleHideTimer();
+      setTaskIslandIdleVisible(false);
+      return;
+    }
+    if (hasTaskIslandSubject && taskIslandPointerInsideRef.current) {
+      setTaskIslandIdleVisible(true);
+    }
+  }, [clearTaskIslandIdleHideTimer, hasTaskIslandSubject, hasVisibleTaskIslandActivity]);
+
+  useEffect(() => {
+    if (taskOverlay !== null) {
+      clearTaskIslandIdleHideTimer();
+      return;
+    }
+    if (!taskIslandPointerInsideRef.current) scheduleIdleTaskIslandHide();
+  }, [clearTaskIslandIdleHideTimer, scheduleIdleTaskIslandHide, taskOverlay]);
+
+  useEffect(() => () => clearTaskIslandIdleHideTimer(), [clearTaskIslandIdleHideTimer]);
 
   useEffect(() => {
     setPendingConversationTarget((current) => (
@@ -2547,7 +2632,51 @@ function ConversationWorkspace({
                     />
                   ) : null}
                   <section className={`conversation-stage has-floating-orb${isStandaloneConversation ? " is-standalone" : ""}`} aria-label="Agent 对话工作区">
-                    <div className="task-island-cluster">
+                    {hasTaskIslandSubject && !hasVisibleTaskIslandActivity ? (
+                      <div
+                        className="task-island-hover-sensor"
+                        aria-hidden="true"
+                        onPointerDown={handleTaskIslandPointerEnter}
+                        onPointerEnter={handleTaskIslandPointerEnter}
+                        onPointerLeave={handleTaskIslandPointerLeave}
+                      />
+                    ) : null}
+                    <div className="task-island-positioner">
+                      <AnimatePresence>
+                      {taskIslandVisible ? (
+                        <motion.div
+                          className="task-island-motion-shell"
+                          layout="size"
+                          initial={reduceTaskIslandMotion ? { opacity: 0 } : {
+                            opacity: 0,
+                            y: -30,
+                            scaleX: 0.18,
+                            scaleY: 0.24,
+                          }}
+                          animate={reduceTaskIslandMotion ? { opacity: 1 } : {
+                            opacity: 1,
+                            y: 0,
+                            scaleX: 1,
+                            scaleY: 1,
+                            transition: { type: "spring", stiffness: 360, damping: 30, mass: 0.72 },
+                          }}
+                          exit={reduceTaskIslandMotion ? { opacity: 0 } : {
+                            opacity: 0,
+                            y: -28,
+                            scaleX: 0.2,
+                            scaleY: 0.28,
+                            transition: { duration: 0.22, ease: [0.3, 0, 1, 1] },
+                          }}
+                          onPointerEnter={handleTaskIslandPointerEnter}
+                          onPointerLeave={handleTaskIslandPointerLeave}
+                        >
+                        <motion.div
+                          className="task-island-cluster"
+                          layout
+                          initial={reduceTaskIslandMotion ? false : { opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: reduceTaskIslandMotion ? 0 : 0.18, delay: reduceTaskIslandMotion ? 0 : 0.08 }}
+                        >
                     {isStandaloneConversation && activeStandaloneApplication ? (
                       <ConversationTaskIsland
                         name={activeStandaloneApplication.name}
@@ -2618,7 +2747,7 @@ function ConversationWorkspace({
                         }}
                       />
                     ) : null}
-                    {!isUnsentConversationDraft(activeConversation) ? (
+                    {globalTaskCenterEnabled ? (
                       <GlobalTaskCenter
                         activeConversationId={activeConversationId}
                         expanded={taskOverlay === "global"}
@@ -2631,6 +2760,10 @@ function ConversationWorkspace({
                         onExpandedChange={(open) => changeTaskOverlay(open ? "global" : null)}
                       />
                     ) : null}
+                        </motion.div>
+                        </motion.div>
+                      ) : null}
+                      </AnimatePresence>
                     </div>
 
                   {activeRuntimeError ? (
@@ -3116,17 +3249,13 @@ function TaskStatusFeedback({
     >
       <AnimatePresence initial={false} mode="wait">
         <motion.span
-          className="task-status-feedback-icon"
+          className={`task-status-feedback-icon${status === "running" ? " is-spinning" : ""}`}
           key={status}
           initial={reduceMotion ? false : { opacity: 0, scale: 0.82 }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-            rotate: !reduceMotion && !isTerminal && status !== "waiting" ? 360 : 0,
-          }}
+          animate={{ opacity: 1, scale: 1 }}
           exit={reduceMotion ? undefined : { opacity: 0, scale: 0.88 }}
-          transition={!reduceMotion && !isTerminal && status !== "waiting"
-            ? { rotate: { duration: 0.9, repeat: Infinity, ease: "linear" }, opacity: { duration: 0.14 }, scale: { type: "spring", stiffness: 320, damping: 32, bounce: 0 } }
+          transition={!reduceMotion && !isTerminal
+            ? { opacity: { duration: 0.14 }, scale: { type: "spring", stiffness: 320, damping: 32, bounce: 0 } }
             : { duration: reduceMotion ? 0 : 0.18 }}
           aria-hidden="true"
         >
@@ -5870,7 +5999,6 @@ function OverviewHome({
       <header className="overview-header">
         <div>
           <Title level={2}>概览</Title>
-          <Text type="secondary">从任务出发，查看数字员工的工作进度、待办操作与交付结果</Text>
         </div>
       </header>
 
@@ -5946,7 +6074,7 @@ function OverviewHome({
                 allowClear
                 value={query}
                 prefix={<Search size={15} />}
-                placeholder="搜索任务、数字员工或群组项目"
+                placeholder="请输入关键词"
                 aria-label="搜索任务"
                 onChange={(event) => setQuery(event.target.value)}
               />
@@ -9955,6 +10083,62 @@ function ConversationTargetSelector({
   );
 }
 
+type ComposerMentionMenuPosition = {
+  left: number;
+  top: number;
+  maxHeight: number;
+};
+
+function measureComposerMentionMenuPosition(
+  textarea: HTMLTextAreaElement,
+  cursor: number,
+): ComposerMentionMenuPosition | null {
+  const composerRoot = textarea.closest<HTMLElement>(".composer-root");
+  if (!composerRoot) return null;
+
+  const textareaStyle = window.getComputedStyle(textarea);
+  const textareaRect = textarea.getBoundingClientRect();
+  const rootRect = composerRoot.getBoundingClientRect();
+  const mirror = document.createElement("div");
+  const caretMarker = document.createElement("span");
+  Object.assign(mirror.style, {
+    position: "fixed",
+    top: "0",
+    left: "0",
+    width: `${textareaRect.width}px`,
+    boxSizing: textareaStyle.boxSizing,
+    padding: textareaStyle.padding,
+    border: textareaStyle.border,
+    font: textareaStyle.font,
+    letterSpacing: textareaStyle.letterSpacing,
+    lineHeight: textareaStyle.lineHeight,
+    overflowWrap: textareaStyle.overflowWrap,
+    tabSize: textareaStyle.tabSize,
+    whiteSpace: "pre-wrap",
+    visibility: "hidden",
+    pointerEvents: "none",
+  });
+  mirror.append(document.createTextNode(textarea.value.slice(0, cursor)));
+  caretMarker.textContent = "\u200b";
+  mirror.append(caretMarker);
+  document.body.append(mirror);
+
+  const mirrorRect = mirror.getBoundingClientRect();
+  const markerRect = caretMarker.getBoundingClientRect();
+  const caretViewportLeft = textareaRect.left + markerRect.left - mirrorRect.left - textarea.scrollLeft;
+  const caretViewportTop = textareaRect.top + markerRect.top - mirrorRect.top - textarea.scrollTop;
+  mirror.remove();
+
+  const menuWidth = Math.min(240, Math.max(0, rootRect.width - 24));
+  const minimumLeft = 12;
+  const maximumLeft = Math.max(minimumLeft, rootRect.width - menuWidth - 12);
+  return {
+    left: Math.min(Math.max(caretViewportLeft - rootRect.left, minimumLeft), maximumLeft),
+    top: caretViewportTop - rootRect.top - 8,
+    maxHeight: Math.max(120, Math.min(320, caretViewportTop - 12)),
+  };
+}
+
 function Composer({
   conversationId,
   selectedApplication,
@@ -9998,6 +10182,7 @@ function Composer({
   const [mentionRange, setMentionRange] = useState<{ start: number; end: number } | null>(null);
   const [mentionQuery, setMentionQuery] = useState("");
   const [activeMentionIndex, setActiveMentionIndex] = useState(-1);
+  const [mentionMenuPosition, setMentionMenuPosition] = useState<ComposerMentionMenuPosition | null>(null);
   const mentionApplications = enableApplicationMentions
     ? (projectApplications ?? []).filter((application) => (
         !mentionQuery
@@ -10028,6 +10213,7 @@ function Composer({
     setMentionRange(null);
     setMentionQuery("");
     setActiveMentionIndex(-1);
+    setMentionMenuPosition(null);
   };
 
   useEffect(() => {
@@ -10097,15 +10283,36 @@ function Composer({
   const updateMentionMenu = (value: string, cursor: number) => {
     if (!enableApplicationMentions) return;
     const activeText = value.slice(0, cursor);
-    const match = activeText.match(/(?:^|\s)@([^\s@]*)$/);
+    const match = activeText.match(/(@+)([^\s@]*)$/);
     if (!match) {
       closeMentionMenu();
       return;
     }
-    setMentionRange({ start: cursor - match[1].length - 1, end: cursor });
-    setMentionQuery(match[1]);
+    setMentionRange({ start: cursor - match[1].length - match[2].length, end: cursor });
+    setMentionQuery(match[2]);
     setActiveMentionIndex(-1);
+    setMentionMenuPosition(
+      composerInputRef.current
+        ? measureComposerMentionMenuPosition(composerInputRef.current, cursor)
+        : null,
+    );
   };
+
+  useEffect(() => {
+    if (!mentionRange || !composerInputRef.current) return undefined;
+    const textarea = composerInputRef.current;
+    const updatePosition = () => {
+      setMentionMenuPosition(measureComposerMentionMenuPosition(textarea, textarea.selectionStart ?? mentionRange.end));
+    };
+    const resizeObserver = new ResizeObserver(updatePosition);
+    resizeObserver.observe(textarea);
+    window.addEventListener("resize", updatePosition);
+    updatePosition();
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("resize", updatePosition);
+    };
+  }, [composerInput.value, mentionRange]);
 
   return (
     <ComposerPrimitive.Root className="composer-root">
@@ -10148,9 +10355,22 @@ function Composer({
             );
           }}
           onScroll={(event) => {
-            if (!composerHighlightRef.current) return;
-            composerHighlightRef.current.scrollTop = event.currentTarget.scrollTop;
-            composerHighlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+            if (composerHighlightRef.current) {
+              composerHighlightRef.current.scrollTop = event.currentTarget.scrollTop;
+              composerHighlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+            }
+            if (mentionRange) {
+              setMentionMenuPosition(measureComposerMentionMenuPosition(
+                event.currentTarget,
+                event.currentTarget.selectionStart ?? mentionRange.end,
+              ));
+            }
+          }}
+          onSelect={(event) => {
+            updateMentionMenu(
+              event.currentTarget.value,
+              event.currentTarget.selectionStart ?? event.currentTarget.value.length,
+            );
           }}
           onKeyDown={(event) => {
             if (!mentionRange) return;
@@ -10177,7 +10397,16 @@ function Composer({
         />
       </div>
       {mentionRange ? (
-        <div className="composer-mention-menu" role="listbox" aria-label="选择应用">
+        <div
+          className="composer-mention-menu"
+          role="listbox"
+          aria-label="选择应用"
+          style={mentionMenuPosition ? {
+            left: mentionMenuPosition.left,
+            top: mentionMenuPosition.top,
+            maxHeight: mentionMenuPosition.maxHeight,
+          } : undefined}
+        >
           {mentionApplications.length ? mentionApplications.map((application, index) => (
             <button
               className={index === activeMentionIndex ? "composer-mention-option is-active" : "composer-mention-option"}
@@ -10219,7 +10448,13 @@ function Composer({
         </Space>
         <ThreadPrimitive.If running>
           <ComposerPrimitive.Cancel asChild>
-            <Button danger icon={<Square size={14} />}>停止</Button>
+            <Button
+              className="composer-stop-button"
+              aria-label="停止生成"
+              icon={<Square size={12} fill="currentColor" strokeWidth={0} />}
+            >
+              停止
+            </Button>
           </ComposerPrimitive.Cancel>
         </ThreadPrimitive.If>
         <ThreadPrimitive.If running={false}>

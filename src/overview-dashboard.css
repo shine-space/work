@@ -3,7 +3,7 @@
   background: var(--ant-color-bg-container);
   color: var(--ant-color-text);
 }
-.overview-dashboard .overview-header { margin-bottom: 26px; }
+.overview-dashboard .overview-header { margin-bottom: 16px; }
 .overview-dashboard .overview-header h2.ant-typography { color: var(--ant-color-text); font-size: 24px; line-height: 34px; font-weight: 500; }
 .overview-dashboard .ant-typography-secondary { color: var(--ant-color-text-secondary); font-size: 14px; }
 .overview-dashboard .overview-summary { padding: 0; border: 0; background: transparent; }
@@ -12,11 +12,13 @@
 .overview-dashboard .overview-period-select { width: 146px; }
 .overview-dashboard .overview-metrics { gap: 20px; }
 .overview-dashboard .overview-metrics button {
+  position: relative;
   min-width: 0;
   min-height: 180px;
   padding: 24px 24px 16px 24px;
   align-content: start;
   gap: 18px;
+  overflow: hidden;
   border: 1px solid var(--ant-color-border-secondary);
   border-radius: var(--ty-radius-12);
   background: var(--ant-color-fill-quaternary);
@@ -27,7 +29,16 @@ box-shadow: 0 2px 3px rgba(0, 0, 0, .05);
 .overview-dashboard .overview-metrics button.is-active:hover {
   border-color: transparent;
   outline: none;
-  background: var(--ui-color-accent);
+  background:
+    radial-gradient(circle at 18% 0%, color-mix(in srgb, var(--ui-color-white) 24%, transparent) 0%, transparent 44%),
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--ui-color-accent) 96%, var(--ui-color-white)) 0%,
+      color-mix(in srgb, var(--ui-color-accent) 90%, transparent) 100%
+    );
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--ui-color-accent) 22%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  backdrop-filter: blur(18px) saturate(145%);
 }
 .overview-dashboard .overview-metric-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .overview-dashboard .overview-metric-top > span:first-child { color: var(--ant-color-text-secondary); font-size: 14px; font-weight: 500; }
@@ -67,16 +78,17 @@ box-shadow: 0 2px 3px rgba(0, 0, 0, .05);
 .overview-dashboard .overview-table-filters { display: flex; align-items: center; gap: 8px; }
 .overview-dashboard .overview-table-filters > .ant-select { width: 112px; }
 .overview-dashboard .overview-table-filters > .ant-select:last-child { width: 128px; }
-.overview-dashboard .overview-task-search { width: 220px; min-width: 180px; flex: 0 1 220px; }
+.overview-dashboard .overview-task-search { width: 160px; min-width: 160px; flex: 0 0 160px; }
 .overview-dashboard .overview-view-switch { display: inline-flex; height: 32px; flex: 0 0 auto; padding: 2px; border-radius: var(--ty-radius-6); background: var(--ant-color-fill-tertiary); }
-.overview-dashboard .overview-view-switch .ant-segmented-group { gap: 0; }
-.overview-dashboard .overview-view-switch .ant-segmented-item { width: 30px; min-width: 30px; height: 28px; border-radius: 4px; color: var(--ant-color-text-secondary); }
+.overview-dashboard .overview-view-switch .ant-segmented-group { display: grid; grid-template-columns: repeat(2, 30px); align-items: center; gap: 0; }
+.overview-dashboard .overview-view-switch .ant-segmented-item { display: grid; width: 30px; min-width: 30px; height: 28px; border-radius: 4px; place-items: center; color: var(--ant-color-text-secondary); }
 .overview-dashboard .overview-view-switch .ant-segmented-item-selected { color: var(--ant-color-text); }
-.overview-dashboard .overview-view-switch .ant-segmented-item-label { position: relative; display: flex; height: 28px; min-height: 28px; padding: 0; align-items: center; justify-content: center; }
-.overview-dashboard .overview-view-switch .ant-segmented-item-icon { position: absolute; inset: 0; display: grid; margin-inline-end: 0; place-items: center; line-height: 1; }
+.overview-dashboard .overview-view-switch .ant-segmented-item-label { position: relative; display: grid; width: 100%; height: 100%; min-height: 0; padding: 0; place-items: center; line-height: 0; }
+.overview-dashboard .overview-view-switch .ant-segmented-item-icon { display: grid; width: 14px; height: 14px; margin: 0 !important; place-items: center; line-height: 0; }
 .overview-dashboard .overview-view-switch .ant-segmented-item-icon svg { display: block; width: 14px; height: 14px; }
+.overview-dashboard .overview-view-switch .ant-segmented-item-label > span:not(.ant-segmented-item-icon) { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .overview-dashboard .overview-view-switch .ant-segmented-thumb { border-radius: 4px; }
-.overview-dashboard .overview-view-label { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.overview-dashboard .overview-view-label { position: absolute; width: 1px; height: 1px; margin: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
 .overview-dashboard .overview-task-table { border: 0; border-radius: 0; background: transparent; }
 .overview-dashboard .overview-task-table-head,
 .overview-dashboard .overview-task-table-row { grid-template-columns: minmax(210px, 1.6fr) minmax(104px, .8fr) minmax(104px, .8fr) 92px 88px; gap: 16px; }
@@ -113,7 +125,7 @@ box-shadow: 0 2px 3px rgba(0, 0, 0, .05);
   .overview-dashboard .overview-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .overview-dashboard .overview-all-tasks > header { align-items: flex-start; flex-direction: column; }
   .overview-dashboard .overview-table-toolbar { width: 100%; margin-left: 0; }
-  .overview-dashboard .overview-task-search { min-width: 220px; flex: 1 1 240px; }
+  .overview-dashboard .overview-task-search { min-width: 160px; flex: 1 1 160px; }
   .overview-dashboard .overview-view-switch { margin-left: auto; }
   .overview-dashboard .overview-task-table { overflow-x: auto; }
   .overview-dashboard .overview-task-table-head,
@@ -121,7 +133,7 @@ box-shadow: 0 2px 3px rgba(0, 0, 0, .05);
 }
 @media (max-width: 600px) {
   .overview-dashboard { padding: 52px 14px 28px; }
-  .overview-dashboard .overview-header { margin-bottom: 20px; }
+  .overview-dashboard .overview-header { margin-bottom: 14px; }
   .overview-dashboard .overview-summary > header { flex-direction: row; align-items: center; }
   .overview-dashboard .overview-period-select { width: 134px; }
   .overview-dashboard .overview-metrics { gap: 12px; }
