@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "antd/dist/reset.css";
 import App from "./App";
+import "./resource-tree.css";
 import "./styles.css";
 import "./navigation-density.css";
 import "./project-record-density.css";

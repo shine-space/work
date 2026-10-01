@@ -689,16 +689,16 @@ type SkillDefinition = {
 };
 
 const skillCatalog: SkillDefinition[] = [
-  { id: "deep-research", name: "深度研究", category: "研究分析", description: "交叉验证多来源资料，形成带依据的专题研究结论。", icon: "telescope", iconColor: "var(--ui-color-red-6)", iconBackground: "var(--ui-color-red-1)" },
-  { id: "content-creation", name: "内容研创", category: "内容创作", description: "根据目标、素材和受众生成结构完整的内容初稿。", icon: "pen", iconColor: "var(--ui-color-blue-6)", iconBackground: "var(--ui-color-blue-1)" },
-  { id: "webpage-reader", name: "网页速读", category: "研究分析", description: "快速提炼网页重点、关键数据和待跟进事项。", icon: "scan", iconColor: "var(--ui-color-orange-6)", iconBackground: "var(--ui-color-orange-1)" },
-  { id: "data-insight", name: "数据洞察", category: "数据处理", description: "分析业务指标变化，识别异常、趋势与可能原因。", icon: "chart", iconColor: "var(--ui-color-purple-6)", iconBackground: "var(--ui-color-purple-1)" },
-  { id: "meeting-notes", name: "会议纪要", category: "办公效率", description: "整理讨论结论、决策事项、负责人和截止时间。", icon: "notes", iconColor: "var(--ui-color-cyan-6)", iconBackground: "var(--ui-color-cyan-1)" },
-  { id: "document-review", name: "文档校对", category: "办公效率", description: "检查错别字、语法、格式及专业术语一致性。", icon: "review", iconColor: "var(--ui-color-green-6)", iconBackground: "var(--ui-color-green-1)" },
-  { id: "table-cleanup", name: "表格整理", category: "数据处理", description: "规范字段和数据格式，完成清洗、分类与摘要。", icon: "table", iconColor: "var(--ui-color-lime-6)", iconBackground: "var(--ui-color-lime-1)" },
-  { id: "project-weekly", name: "项目周报", category: "办公效率", description: "汇总项目进展、风险、阻塞事项和下周计划。", icon: "calendar", iconColor: "var(--ui-color-gold-6)", iconBackground: "var(--ui-color-gold-1)" },
-  { id: "risk-scan", name: "风险扫描", category: "研究分析", description: "识别合同、方案与交付材料中的潜在风险。", icon: "risk", iconColor: "var(--ui-color-magenta-6)", iconBackground: "var(--ui-color-magenta-1)" },
-  { id: "multilingual-translation", name: "多语翻译", category: "内容创作", description: "保留专业术语和原有格式，完成准确自然的翻译。", icon: "translate", iconColor: "var(--ui-color-geekblue-6)", iconBackground: "var(--ui-color-geekblue-1)" },
+  { id: "deep-research", name: "深度研究", category: "研究分析", description: "围绕复杂课题检索并交叉验证多来源资料，识别证据冲突与信息缺口，输出带出处、关键判断和后续建议的结构化研究结论。", icon: "telescope", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(135deg, #ff9b54 0%, #ff6f72 52%, #9a83ff 100%)" },
+  { id: "content-creation", name: "内容研创", category: "内容创作", description: "结合目标、素材、受众与表达场景规划内容结构和叙事重点，生成可继续编辑的文章、方案、邮件或宣传内容初稿。", icon: "pen", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(45deg, #59c9d3 0%, #ff9c54 52%, #e97ac6 100%)" },
+  { id: "webpage-reader", name: "网页速读", category: "研究分析", description: "快速阅读长网页并提炼核心观点、关键数据、事实依据和待跟进事项，帮助你在较短时间内掌握内容全貌与行动重点。", icon: "scan", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(160deg, #ffd45c 0%, #ff8b4b 48%, #67b9ee 100%)" },
+  { id: "data-insight", name: "数据洞察", category: "数据处理", description: "统一业务数据口径并分析指标变化、异常波动和趋势关联，归纳可能原因，形成便于决策和后续验证的洞察建议。", icon: "chart", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(25deg, #9a83ff 0%, #5ca7ef 48%, #ff9450 100%)" },
+  { id: "meeting-notes", name: "会议纪要", category: "办公效率", description: "从会议记录中整理议题、讨论结论、关键决策、负责人和截止时间，生成结构清晰、便于同步与持续追踪的会议纪要。", icon: "notes", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(215deg, #ff9c55 0%, #4fcbd2 48%, #6f89e8 100%)" },
+  { id: "document-review", name: "文档校对", category: "办公效率", description: "检查错别字、语法、格式、标点和专业术语一致性，定位含义模糊或表达不顺的内容，并给出可直接采用的修改建议。", icon: "review", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(145deg, #9dcc62 0%, #55c7a1 52%, #ff9851 100%)" },
+  { id: "table-cleanup", name: "表格整理", category: "数据处理", description: "识别并规范字段名称、数据类型和格式，完成缺失值与重复项处理、分类汇总及摘要输出，让表格更适合分析与协作。", icon: "table", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(315deg, #ff8f4c 0%, #4fcaa4 48%, #5fa5ea 100%)" },
+  { id: "project-weekly", name: "项目周报", category: "办公效率", description: "汇总项目阶段进展、已完成事项、风险与阻塞、关键协作和下周计划，生成重点明确、便于管理者快速浏览的项目周报。", icon: "calendar", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(70deg, #f0b946 0%, #ff8848 48%, #e879c0 100%)" },
+  { id: "risk-scan", name: "风险扫描", category: "研究分析", description: "扫描合同、方案、计划与交付材料中的潜在风险和信息缺口，标注影响范围、风险原因，并整理需要复核或跟进的建议。", icon: "risk", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(200deg, #ff9a50 0%, #e96b9d 50%, #987fea 100%)" },
+  { id: "multilingual-translation", name: "多语翻译", category: "内容创作", description: "在保留专业术语、原有结构和语气风格的基础上完成多语言翻译，并校正上下文歧义，使译文准确、自然且便于直接使用。", icon: "translate", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(110deg, #5c9fe9 0%, #7b82ec 54%, #ff974f 100%)" },
 ];
 
 const skillDetailCatalog: Record<string, { capabilities: string[]; usage: string }> = {
@@ -4291,7 +4291,7 @@ function ProjectWorkspaceRail({
                         const SkillIcon = skillIconCatalog[skill.icon];
                         return (
                           <div key={skill.id}>
-                            <span className="application-profile-skill-icon" style={{ backgroundColor: skill.iconBackground, color: skill.iconColor }}>
+                            <span className="application-profile-skill-icon" style={{ background: skill.iconBackground, color: skill.iconColor }}>
                               <SkillIcon size={15} />
                             </span>
                             <span>{skill.name}</span>
@@ -4870,7 +4870,7 @@ function TeamResourcesPanel({
   return (
     <aside className="project-files-panel team-resources-panel" aria-label="文件">
       <WorkspacePanelHeader title="文件" onClose={onClose} />
-      <div className="project-files-panel-body team-resources-panel-body">
+      <div className="project-files-panel-body team-resources-panel-body work-resource-rail">
         {selectedResource ? (
           <section className="work-file-preview team-resource-preview" aria-label={`${selectedResource.name}文件预览`}>
             <header className="work-file-preview-header">
@@ -5281,12 +5281,13 @@ function SkillCardCollection({
               onOpenSkill(skill);
             }}
           >
-            <span className="skill-card-icon" style={{ backgroundColor: skill.iconBackground, color: skill.iconColor }} aria-hidden="true">
+            <span className="skill-card-icon" style={{ background: skill.iconBackground, color: skill.iconColor }} aria-hidden="true">
               <SkillIcon size={16} />
             </span>
             <div className="skill-card-body">
               <div className="skill-card-heading">
                 <span className="skill-card-title">{skill.name}</span>
+                <span className="skill-card-category">{skill.category}</span>
                 <span
                   className="skill-card-action"
                   onClick={(event) => event.stopPropagation()}
@@ -5295,7 +5296,7 @@ function SkillCardCollection({
                   {renderAction(skill)}
                 </span>
               </div>
-              <p className="skill-card-description">{skill.description}</p>
+              <p className="skill-card-description" title={skill.description}>{skill.description}</p>
             </div>
           </article>
         );
@@ -5329,7 +5330,7 @@ function SkillDetailModal({
       destroyOnHidden
     >
       <header className="skill-detail-header">
-        <span className="skill-detail-icon" style={{ backgroundColor: skill.iconBackground, color: skill.iconColor }} aria-hidden="true">
+        <span className="skill-detail-icon" style={{ background: skill.iconBackground, color: skill.iconColor }} aria-hidden="true">
           <SkillIcon size={30} />
         </span>
         <div className="skill-detail-identity">
@@ -6291,6 +6292,7 @@ function ApplicationsHome({
             ) : null}
             {activeProductTab === "skills" ? (
               <SkillCardCollection
+                className="is-marketplace"
                 emptyDescription="没有匹配的 Skill"
                 skills={visibleSkills}
                 onOpenSkill={setSelectedSkill}
@@ -6319,7 +6321,9 @@ function ApplicationsHome({
                         size="small"
                         icon={<Plus size={18} />}
                         aria-label={`安装${skill.name}到`}
-                      />
+                      >
+                        安装到
+                      </Button>
                     </Dropdown>
                   </Tooltip>
                 )}
@@ -8280,9 +8284,14 @@ function ConversationNavigation({
   const changeNavigationMode = (value: "daily" | "app-builder") => {
     setNavigationMode(value);
     if (value === "app-builder") {
-      window.location.assign(import.meta.env.VITE_APPLICATION_STUDIO_URL || "/applications/studio");
+      window.setTimeout(() => {
+        window.location.assign(import.meta.env.VITE_APPLICATION_STUDIO_URL || "/applications/studio");
+      }, reduceMotion ? 0 : 240);
     }
   };
+  const navigationModeTransition = reduceMotion
+    ? { duration: 0 }
+    : { duration: 0.18, ease: [0.2, 0, 0, 1] as const };
 
   const navigationItemNodes = navigationItems.map((item) => {
     if (item.type === "project") {
@@ -8833,17 +8842,49 @@ function ConversationNavigation({
       </AnimatePresence>
 
       <div className="navigation-mode-switch">
-        <Segmented<"daily" | "app-builder">
-          block
-          size="middle"
-          aria-label="导航模式"
-          value={navigationMode}
-          options={[
-            { label: "日常办公", value: "daily" },
-            { label: "应用构建", value: "app-builder" },
-          ]}
-          onChange={changeNavigationMode}
-        />
+        <LayoutGroup id="navigation-mode-switch">
+          <Segmented<"daily" | "app-builder">
+            block
+            size="middle"
+            aria-label="导航模式"
+            value={navigationMode}
+            options={[
+              {
+                label: (
+                  <>
+                    {navigationMode === "daily" ? (
+                      <motion.span
+                        aria-hidden="true"
+                        className="navigation-mode-selection"
+                        layoutId="navigation-mode-selection"
+                        transition={navigationModeTransition}
+                      />
+                    ) : null}
+                    <span className="navigation-mode-label">日常办公</span>
+                  </>
+                ),
+                value: "daily",
+              },
+              {
+                label: (
+                  <>
+                    {navigationMode === "app-builder" ? (
+                      <motion.span
+                        aria-hidden="true"
+                        className="navigation-mode-selection"
+                        layoutId="navigation-mode-selection"
+                        transition={navigationModeTransition}
+                      />
+                    ) : null}
+                    <span className="navigation-mode-label">应用构建</span>
+                  </>
+                ),
+                value: "app-builder",
+              },
+            ]}
+            onChange={changeNavigationMode}
+          />
+        </LayoutGroup>
       </div>
 
       <div className="navigation-account">
@@ -9258,15 +9299,15 @@ function ThreadView({
             onTargetProjectSelect={onTargetProjectSelect}
             uploadProps={uploadProps}
           />
+          {isEmpty && !enableApplicationMentions && !selectedCatalogApplication ? (
+            <NewConversationTargetBrowser
+              applications={availableApplications}
+              projects={availableProjects}
+              onApplicationOpen={onBrowseApplication}
+              onProjectOpen={onBrowseProject}
+            />
+          ) : null}
         </ThreadPrimitive.ViewportFooter>
-        {isEmpty && !enableApplicationMentions && !selectedCatalogApplication ? (
-          <NewConversationTargetBrowser
-            applications={availableApplications}
-            projects={availableProjects}
-            onApplicationOpen={onBrowseApplication}
-            onProjectOpen={onBrowseProject}
-          />
-        ) : null}
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
   );
@@ -9483,15 +9524,15 @@ function UserMessage() {
             {({ part }) => part.type === "text" ? <MessageTextWithMentions text={part.text} /> : null}
           </MessagePrimitive.Parts>
         </div>
-        <ActionBarPrimitive.Root className="message-actions" autohide="never">
+        <ActionBarPrimitive.Root className="message-actions" data-floating autohide="never">
           <Tooltip title="复制">
             <ActionBarPrimitive.Copy asChild>
-              <Button type="text" size="small" icon={<Copy size={14} />} aria-label="复制" />
+              <Button type="text" size="small" icon={<Copy size={12} />} aria-label="复制" />
             </ActionBarPrimitive.Copy>
           </Tooltip>
           <Tooltip title="重试">
             <ActionBarPrimitive.Edit asChild>
-              <Button type="text" size="small" icon={<RefreshCw size={14} />} aria-label="重试" />
+              <Button type="text" size="small" icon={<RefreshCw size={12} />} aria-label="重试" />
             </ActionBarPrimitive.Edit>
           </Tooltip>
         </ActionBarPrimitive.Root>
@@ -9560,15 +9601,15 @@ function AssistantMessage({
             {({ part }) => part.type === "text" ? <MessagePartPrimitive.Text /> : null}
           </MessagePrimitive.Parts>
         </div>
-        <ActionBarPrimitive.Root className="message-actions" hideWhenRunning autohide="never">
+        <ActionBarPrimitive.Root className="message-actions" data-floating hideWhenRunning autohide="never">
           <Tooltip title="复制">
             <ActionBarPrimitive.Copy asChild>
-              <Button type="text" size="small" icon={<Copy size={14} />} aria-label="复制" />
+              <Button type="text" size="small" icon={<Copy size={12} />} aria-label="复制" />
             </ActionBarPrimitive.Copy>
           </Tooltip>
           <Tooltip title="重新生成">
             <ActionBarPrimitive.Reload asChild>
-              <Button type="text" size="small" icon={<RefreshCw size={14} />} aria-label="重新生成" />
+              <Button type="text" size="small" icon={<RefreshCw size={12} />} aria-label="重新生成" />
             </ActionBarPrimitive.Reload>
           </Tooltip>
         </ActionBarPrimitive.Root>
@@ -10165,7 +10206,7 @@ function Composer({
             resources={resourceFiles}
             resourceConversations={resourceConversations}
           />
-          {showConversationTarget ? (
+          {showConversationTarget && !hasConversationTarget ? (
             <ConversationTargetSelector
               applications={availableApplications}
               projects={availableProjects}
