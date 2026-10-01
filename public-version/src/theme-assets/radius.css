@@ -1,0 +1,21 @@
+:root {
+  --ty-radius-1: 1px;
+  --ty-radius-2: 2px;
+  --ty-radius-3: 3px;
+  --ty-radius-4: 4px;
+  --ty-radius-5: 5px;
+  --ty-radius-6: 6px;
+  --ty-radius-7: 7px;
+  --ty-radius-8: 8px;
+  --ty-radius-9: 9px;
+  --ty-radius-10: 10px;
+  --ty-radius-12: 12px;
+  --ty-radius-14: 14px;
+  --ty-radius-16: 16px;
+  --ty-radius-20: 20px;
+  --ty-radius-24: 24px;
+  --ty-radius-32: 32px;
+  --ty-radius-120: 120px;
+  --ty-radius-circle: 50%;
+  --ty-radius-pill: 999px;
+}

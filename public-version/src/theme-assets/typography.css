@@ -1,0 +1,41 @@
+:root {
+  --ty-font-text: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ty-font-text-mac-latin: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --ty-font-text-mac-zh: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Hiragino Sans", "SF Pro Text", system-ui, "Noto Sans SC", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --ty-font-text-mac-ja: "Hiragino Sans", "Hiragino Kaku Gothic ProN", -apple-system, BlinkMacSystemFont, "PingFang SC", "SF Pro Text", system-ui, "Noto Sans JP", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --ty-font-text-windows-latin: "Segoe UI", system-ui, Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+  --ty-font-text-windows-zh: "Microsoft YaHei", "Segoe UI", system-ui, Roboto, "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+  --ty-font-text-windows-ja: Meiryo, "Yu Gothic UI", "Segoe UI", system-ui, Roboto, "Noto Sans JP", "Helvetica Neue", Arial, sans-serif;
+  --ty-font-number: "PlusJakartaSans", system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --ty-font-code: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --ty-line-height-current: round(up, calc(1em + 8px), 2px);
+  --ty-line-height-compact: 18px;
+  --ty-line-height-caption: 20px;
+  --ty-line-height-body: 22px;
+  --ty-line-height-body-lg: 22px;
+  --ty-line-height-section: 24px;
+  --ty-line-height-title: 28px;
+  --ty-line-height-page: 30px;
+  font-synthesis: auto;
+}
+
+:where(
+  h1, h2, h3, h4, h5, h6,
+  p, span, small, strong, em, b, i, a,
+  li, dt, dd, th, td, label, time,
+  button, input, textarea, select, option,
+  code, pre, kbd, samp
+):not(.ant-avatar-string):not(.anticon):not(.ant-btn-icon) {
+  line-height: var(--ty-line-height-current) !important;
+}
+
+:where(.ant-avatar-string, .anticon, .anticon *, .ant-btn-icon, .ant-btn-icon *) {
+  line-height: 1 !important;
+}
+
+:root[data-platform="mac"][data-font-language="latin"] { --ty-font-text: var(--ty-font-text-mac-latin); }
+:root[data-platform="mac"][data-font-language="zh"] { --ty-font-text: var(--ty-font-text-mac-zh); }
+:root[data-platform="mac"][data-font-language="ja"] { --ty-font-text: var(--ty-font-text-mac-ja); }
+:root[data-platform="windows"][data-font-language="latin"] { --ty-font-text: var(--ty-font-text-windows-latin); }
+:root[data-platform="windows"][data-font-language="zh"] { --ty-font-text: var(--ty-font-text-windows-zh); }
+:root[data-platform="windows"][data-font-language="ja"] { --ty-font-text: var(--ty-font-text-windows-ja); }

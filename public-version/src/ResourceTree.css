@@ -1,0 +1,180 @@
+/* Shared resource-tree grammar used by the user-side tool rail and console resource surfaces. */
+.work-resource-rail {
+  width: min(480px, 100%);
+  min-width: 0;
+  padding: 0 16px 0 12px;
+  box-sizing: border-box;
+}
+
+.file-type-icon {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  object-fit: contain;
+}
+
+.work-root-children,
+.work-folder-children {
+  position: relative;
+}
+
+.work-folder-row {
+  display: grid;
+  width: 100%;
+  min-height: 36px;
+  padding: 0 2px;
+  grid-template-columns: 16px 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: var(--ty-radius-8, 8px);
+  background: transparent;
+  color: var(--ant-color-text, var(--foreground));
+  cursor: pointer;
+  text-align: left;
+}
+
+.work-folder-row:hover,
+.work-folder-row.is-current {
+  background: var(--ant-color-fill-quaternary, var(--muted));
+}
+
+.work-folder-row.is-current {
+  box-shadow: inset 2px 0 0 var(--ant-color-primary, var(--primary));
+}
+
+.work-folder-row:focus-visible,
+.work-file-main:focus-visible {
+  outline: 2px solid var(--ant-color-primary-border, var(--ring));
+  outline-offset: -2px;
+}
+
+.work-folder-disclosure {
+  color: var(--ant-color-text-tertiary, var(--muted-foreground));
+}
+
+.work-folder-row > span:not(.ui-file-type-icon) {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-folder-row > small {
+  min-width: 24px;
+  padding: 2px 6px;
+  border-radius: var(--ty-radius-6, 6px);
+  background: var(--ant-color-fill-quaternary, var(--muted));
+  color: var(--ant-color-text-tertiary, var(--muted-foreground));
+  font-size: 12px;
+  line-height: 16px;
+  text-align: center;
+}
+
+.work-root-row {
+  min-height: 42px;
+}
+
+.work-folder > .work-folder-row {
+  padding-left: 28px;
+}
+
+.work-folder-empty {
+  min-height: 35px;
+  padding: 8px 12px 8px 68px;
+  color: var(--ant-color-text-quaternary, var(--muted-foreground));
+  font-size: 12px;
+}
+
+.work-file-row {
+  display: grid;
+  padding-left: calc(var(--tree-depth, 1) * 20px + 8px);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-radius: var(--ty-radius-6, 6px);
+}
+
+.work-file-row:hover {
+  background: var(--ant-color-fill-quaternary, var(--muted));
+}
+
+.work-file-main {
+  display: grid;
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 8px 7px 0;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--ant-color-text, var(--foreground));
+  cursor: pointer;
+  text-align: left;
+}
+
+.work-file-type {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+}
+
+.work-file-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.work-file-copy > span {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.work-file-tail {
+  position: relative;
+  display: grid;
+  min-width: 76px;
+  min-height: 32px;
+  padding-right: 4px;
+  align-items: center;
+  justify-items: end;
+}
+
+.work-file-time {
+  color: var(--ant-color-text-tertiary, var(--muted-foreground));
+  font-size: 12px;
+  white-space: nowrap;
+  transition: opacity 120ms ease;
+}
+
+.work-file-actions {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  display: flex;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: opacity 120ms ease;
+}
+
+.work-file-row:hover .work-file-time,
+.work-file-row:focus-within .work-file-time {
+  opacity: 0;
+}
+
+.work-file-row:hover .work-file-actions,
+.work-file-row:focus-within .work-file-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .work-file-time,
+  .work-file-actions {
+    transition: none;
+  }
+}
