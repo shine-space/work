@@ -147,6 +147,7 @@ import {
   type TeamResourceGroup,
 } from "./data";
 import FolderFloat from "./components/FolderFloat";
+import { createApplicationRuntime, type RuntimeEvent } from "./runtime";
 import { createTheme } from "./theme";
 
 const { Content } = Layout;
@@ -176,6 +177,7 @@ type RunStageSelection = {
 };
 type ConversationTaskState = {
   conversationId: string;
+  runId?: string;
   status: Exclude<TaskIslandStatus, "idle">;
   title: string;
   ownerName: string;
@@ -187,6 +189,7 @@ type ConversationTaskState = {
 };
 const SHOW_TASK_ISLAND_PROFILE_ON_HOVER = false;
 const TASK_ISLAND_IDLE_HIDE_DELAY = 10_000;
+const applicationRuntime = createApplicationRuntime();
 
 const taskStatusPriority: Record<ConversationTaskState["status"], number> = {
   waiting: 4,
@@ -1150,19 +1153,6 @@ function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   return { page: "project", projectId: projects[0].id };
 }
 
-const sleep = (ms: number, signal: AbortSignal) =>
-  new Promise<void>((resolve, reject) => {
-    const timer = window.setTimeout(resolve, ms);
-    signal.addEventListener(
-      "abort",
-      () => {
-        window.clearTimeout(timer);
-        reject(new DOMException("生成已停止", "AbortError"));
-      },
-      { once: true },
-    );
-  });
-
 function getText(content: AppendMessage["content"]) {
   return content
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
@@ -1176,26 +1166,6 @@ function getStoredMessageText(message: DemoMessage) {
     .flatMap((part) => (part.type === "text" ? [part.text] : []))
     .join("\n")
     .trim();
-}
-
-function createMockAnswer(
-  prompt: string,
-  files: SelectedFile[],
-  applicationId: ApplicationId,
-  responderName?: string,
-) {
-  if (prompt.includes("失败")) {
-    return "模拟请求失败：当前演示已展示可恢复错误状态。请修改问题后重试，或使用消息下方的重新生成操作。";
-  }
-  const fileLine = files.length
-    ? `\n\n已收到 ${files.length} 个本地附件：${files.map((file) => file.name).join("、")}。当前演示只显示附件，不上传文件。`
-    : "";
-  const contextLine =
-    applicationId === "none"
-      ? "当前应用：不使用上下文。"
-      : `当前应用：${applicationMeta[applicationId].label}。`;
-  const responderLine = responderName ? `本轮由${responderName}处理。\n\n` : "";
-  return `${responderLine}${contextLine}\n\n我已处理“${prompt}”。建议先确认目标、时间边界和可用资料，再执行具体动作。正式接入 Argus 后，这里会显示真实 Agent 的流式回答、工具进度、知识引用与审批结果。${fileLine}`;
 }
 
 function createMessage(
@@ -1213,6 +1183,12 @@ function createMessage(
       ? { metadata: { custom: { catalogApplicationId } } }
       : {}),
   };
+}
+
+function createIdempotencyKey(conversationId: string) {
+  const nonce = globalThis.crypto?.randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${conversationId}:${nonce}`;
 }
 
 function createConversationTitle(prompt: string) {
@@ -1292,6 +1268,7 @@ function ConversationWorkspace({
   const [runStageSelection, setRunStageSelection] = useState<RunStageSelection | null>(null);
   const [projectFileToOpenId, setProjectFileToOpenId] = useState<string | null>(null);
   const taskControllersRef = useRef(new Map<string, AbortController>());
+  const cancelledConversationRunsRef = useRef(new Set<string>());
   const globalTaskViewSnapshotRef = useRef<ConversationTaskState[]>([]);
   const taskIslandIdleHideTimerRef = useRef<number | null>(null);
   const taskIslandPointerInsideRef = useRef(false);
@@ -1577,7 +1554,7 @@ function ConversationWorkspace({
     [],
   );
 
-  const runMockAgents = useCallback(
+  const runApplicationAgents = useCallback(
     async (
       conversationId: string,
       prompt: string,
@@ -1592,6 +1569,7 @@ function ConversationWorkspace({
     ) => {
       if (!responders.length) return;
       taskControllersRef.current.get(conversationId)?.abort();
+      cancelledConversationRunsRef.current.delete(conversationId);
       const controller = new AbortController();
       taskControllersRef.current.set(conversationId, controller);
       const targetConversation = conversations.find((conversation) => conversation.id === conversationId);
@@ -1625,109 +1603,154 @@ function ConversationWorkspace({
         [conversationId]: { ...taskIdentity, status: "running", updatedAt: Date.now() },
       }));
       let accumulatedMessages = [...baseMessages];
-      let activeResponderIndex = 0;
+      const participantResponders = new Map(
+        taskParticipants.map((participant, index) => [participant.applicationId, responders[index]]),
+      );
 
-      try {
-        const responseBatchId = Date.now();
-        for (const [responderIndex, responder] of responders.entries()) {
-          activeResponderIndex = responderIndex;
-          const stagedParticipants = taskParticipants.map((participant, index) => ({
-            ...participant,
-            status: index < responderIndex
-              ? "success" as const
-              : index === responderIndex
-                ? "running" as const
-                : "queued" as const,
-          }));
+      const updateRuntimeTask = (event: RuntimeEvent) => {
+        if (cancelledConversationRunsRef.current.has(conversationId)) return;
+        if (event.type === "run.started") {
           setConversationTasks((current) => ({
             ...current,
             [conversationId]: {
-              ...taskIdentity,
-              ownerName: stagedParticipants[responderIndex]?.name ?? taskIdentity.ownerName,
-              participants: stagedParticipants,
-              status: "running",
+              ...(current[conversationId] ?? { ...taskIdentity, status: "running" as const }),
+              runId: event.runId,
               updatedAt: Date.now(),
             },
           }));
-          const assistantId = `assistant-${responseBatchId}-${responderIndex}`;
-          const fullAnswer = createMockAnswer(
-            prompt,
-            files,
-            responder.applicationId,
-            responder.name,
-          );
-          accumulatedMessages = [
-            ...accumulatedMessages,
-            createMessage(assistantId, "assistant", "", responder.catalogApplicationId),
-          ];
-          updateConversationMessages(conversationId, () => accumulatedMessages);
+          return;
+        }
 
-          for (let index = 1; index <= fullAnswer.length; index += 2) {
-            await sleep(24, controller.signal);
-            const text = fullAnswer.slice(0, index + 1);
-            accumulatedMessages = accumulatedMessages.map((item) =>
-              item.id === assistantId
-                ? { ...item, content: [{ type: "text", text }] }
-                : item,
-            );
+        if (event.type === "participant.updated") {
+          setConversationTasks((current) => {
+            const task = current[conversationId] ?? { ...taskIdentity, status: "running" as const };
+            const participants = task.participants.map((participant) => (
+              participant.applicationId === event.participantId
+                ? { ...participant, status: event.status }
+                : participant
+            ));
+            const activeParticipant = participants.find((participant) => (
+              participant.applicationId === event.participantId
+            ));
+            return {
+              ...current,
+              [conversationId]: {
+                ...task,
+                ownerName: activeParticipant?.name ?? task.ownerName,
+                participants,
+                updatedAt: Date.now(),
+              },
+            };
+          });
+          return;
+        }
+
+        if (event.type === "message.started") {
+          const responder = participantResponders.get(event.participantId);
+          if (!accumulatedMessages.some((message) => message.id === event.messageId)) {
+            accumulatedMessages = [
+              ...accumulatedMessages,
+              createMessage(event.messageId, "assistant", "", responder?.catalogApplicationId),
+            ];
             updateConversationMessages(conversationId, () => accumulatedMessages);
           }
+          return;
         }
-        if (prompt.includes("失败")) {
-          const failedParticipants = taskParticipants.map((participant, index) => ({
-            ...participant,
-            status: index < activeResponderIndex
-              ? "success" as const
-              : index === activeResponderIndex
-                ? "error" as const
-                : "queued" as const,
-          }));
+
+        if (event.type === "message.delta") {
+          accumulatedMessages = accumulatedMessages.map((message) => {
+            if (message.id !== event.messageId) return message;
+            return createMessage(
+              message.id,
+              "assistant",
+              `${getStoredMessageText(message)}${event.delta}`,
+              participantResponders.get(event.participantId)?.catalogApplicationId,
+            );
+          });
+          updateConversationMessages(conversationId, () => accumulatedMessages);
+          return;
+        }
+
+        if (event.type === "run.waiting") {
           setConversationTasks((current) => ({
             ...current,
             [conversationId]: {
-              ...taskIdentity,
-              ownerName: failedParticipants[activeResponderIndex]?.name ?? taskIdentity.ownerName,
-              participants: failedParticipants,
-              status: "error",
-              updatedAt: Date.now(),
-              errorMessage: "演示请求返回失败状态；会话内容已经保留，可以直接重试。",
-            },
-          }));
-        } else if (prompt.includes("确认") || prompt.includes("审批")) {
-          const waitingParticipants = taskParticipants.map((participant, index) => ({
-            ...participant,
-            status: index < activeResponderIndex
-              ? "success" as const
-              : index === activeResponderIndex
-                ? "waiting" as const
-                : "queued" as const,
-          }));
-          setConversationTasks((current) => ({
-            ...current,
-            [conversationId]: {
-              ...taskIdentity,
-              ownerName: waitingParticipants[activeResponderIndex]?.name ?? taskIdentity.ownerName,
-              participants: waitingParticipants,
+              ...(current[conversationId] ?? { ...taskIdentity, participants: taskParticipants }),
               status: "waiting",
               updatedAt: Date.now(),
             },
           }));
-        } else {
-          const completedParticipants = taskParticipants.map((participant) => ({
-            ...participant,
-            status: "success" as const,
-          }));
+          return;
+        }
+
+        if (event.type === "run.failed") {
           setConversationTasks((current) => ({
             ...current,
             [conversationId]: {
-              ...taskIdentity,
-              ownerName: completedParticipants.at(-1)?.name ?? taskIdentity.ownerName,
-              participants: completedParticipants,
-              status: "success",
+              ...(current[conversationId] ?? { ...taskIdentity, participants: taskParticipants }),
+              status: "error",
+              errorMessage: event.message,
               updatedAt: Date.now(),
             },
           }));
+          return;
         }
+
+        if (event.type === "run.completed") {
+          setConversationTasks((current) => {
+            const task = current[conversationId] ?? { ...taskIdentity, participants: taskParticipants };
+            return {
+              ...current,
+              [conversationId]: {
+                ...task,
+                ownerName: task.participants.at(-1)?.name ?? task.ownerName,
+                participants: task.participants.map((participant) => ({
+                  ...participant,
+                  status: "success" as const,
+                })),
+                status: "success",
+                updatedAt: Date.now(),
+              },
+            };
+          });
+          return;
+        }
+
+        if (event.type === "run.cancelled") {
+          setConversationTasks((current) => {
+            const next = { ...current };
+            delete next[conversationId];
+            return next;
+          });
+        }
+      };
+
+      try {
+        await applicationRuntime.run(
+          {
+            idempotencyKey: createIdempotencyKey(conversationId),
+            conversationId,
+            prompt,
+            attachments: files.map((file) => ({
+              id: file.uid,
+              name: file.name,
+              size: file.size,
+              type: file.type,
+            })),
+            participants: taskParticipants.map((participant, index) => ({
+              id: participant.applicationId,
+              name: participant.name,
+              avatar: participant.avatar,
+              contextId: responders[index]?.applicationId,
+              contextLabel: applicationMeta[responders[index]?.applicationId ?? "none"].label,
+            })),
+            target: {
+              id: taskIdentity.targetId,
+              type: taskIdentity.targetType,
+            },
+          },
+          { signal: controller.signal, onEvent: updateRuntimeTask },
+        );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           if (taskControllersRef.current.get(conversationId) === controller) {
@@ -1738,20 +1761,10 @@ function ConversationWorkspace({
             });
           }
         } else {
-          const failedParticipants = taskParticipants.map((participant, index) => ({
-            ...participant,
-            status: index < activeResponderIndex
-              ? "success" as const
-              : index === activeResponderIndex
-                ? "error" as const
-                : "queued" as const,
-          }));
           setConversationTasks((current) => ({
             ...current,
             [conversationId]: {
-              ...taskIdentity,
-              ownerName: failedParticipants[activeResponderIndex]?.name ?? taskIdentity.ownerName,
-              participants: failedParticipants,
+              ...(current[conversationId] ?? { ...taskIdentity, participants: taskParticipants }),
               status: "error",
               updatedAt: Date.now(),
               errorMessage: error instanceof Error ? error.message : "生成失败，请重试。",
@@ -1790,21 +1803,59 @@ function ConversationWorkspace({
       },
     }));
     try {
-      await sleep(1200, controller.signal);
-      const completedParticipants = resumedParticipants.map((participant) => ({
-        ...participant,
-        status: "success" as const,
-      }));
-      setConversationTasks((current) => ({
-        ...current,
-        [conversationId]: {
-          ...waitingTask,
-          ownerName: completedParticipants.at(-1)?.name ?? waitingTask.ownerName,
-          participants: completedParticipants,
-          status: "success",
-          updatedAt: Date.now(),
+      const waitingParticipant = resumedParticipants[waitingParticipantIndex];
+      if (!waitingParticipant || !waitingTask.runId) {
+        throw new Error("任务缺少可恢复的运行标识，请重新发起。");
+      }
+      await applicationRuntime.resume(
+        {
+          runId: waitingTask.runId,
+          participantId: waitingParticipant.applicationId,
         },
-      }));
+        {
+          signal: controller.signal,
+          onEvent: (event) => {
+            if (event.type === "participant.updated") {
+              setConversationTasks((current) => {
+                const task = current[conversationId] ?? waitingTask;
+                return {
+                  ...current,
+                  [conversationId]: {
+                    ...task,
+                    participants: task.participants.map((participant) => (
+                      participant.applicationId === event.participantId
+                        ? { ...participant, status: event.status }
+                        : participant
+                    )),
+                    status: event.status === "error" ? "error" : "running",
+                    updatedAt: Date.now(),
+                  },
+                };
+              });
+            } else if (event.type === "run.completed") {
+              setConversationTasks((current) => {
+                const task = current[conversationId] ?? waitingTask;
+                const participants = task.participants.map((participant) => ({
+                  ...participant,
+                  status: "success" as const,
+                }));
+                return {
+                  ...current,
+                  [conversationId]: {
+                    ...task,
+                    ownerName: participants.at(-1)?.name ?? task.ownerName,
+                    participants,
+                    status: "success",
+                    updatedAt: Date.now(),
+                  },
+                };
+              });
+            } else if (event.type === "run.failed") {
+              throw new Error(event.message);
+            }
+          },
+        },
+      );
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError")) {
         setConversationTasks((current) => ({
@@ -1931,7 +1982,7 @@ function ConversationWorkspace({
       }
       const files = [...selectedFiles];
       setSelectedFiles([]);
-      await runMockAgents(
+      await runApplicationAgents(
         conversationId,
         prompt || "请分析附件",
         files,
@@ -1953,7 +2004,7 @@ function ConversationWorkspace({
       pendingTargetApplication,
       pendingTargetProject,
       pendingTargetProjectAdministrator,
-      runMockAgents,
+      runApplicationAgents,
       selectedFiles,
     ],
   );
@@ -1974,7 +2025,7 @@ function ConversationWorkspace({
       if (!prompt || !activeConversation.applicationId) return;
       const responders = getPromptResponders(prompt);
       if (!responders.length) return;
-      await runMockAgents(
+      await runApplicationAgents(
         activeConversation.id,
         prompt,
         [],
@@ -1982,7 +2033,7 @@ function ConversationWorkspace({
         responders,
       );
     },
-    [activeConversation, getPromptResponders, runMockAgents],
+    [activeConversation, getPromptResponders, runApplicationAgents],
   );
 
   const handleEdit = useCallback(
@@ -2001,7 +2052,7 @@ function ConversationWorkspace({
       updateConversationMessages(activeConversation.id, () => nextMessages);
       const responders = getPromptResponders(text);
       if (!responders.length) return;
-      await runMockAgents(
+      await runApplicationAgents(
         activeConversation.id,
         text,
         [],
@@ -2009,8 +2060,39 @@ function ConversationWorkspace({
         responders,
       );
     },
-    [activeConversation, getPromptResponders, runMockAgents, updateConversationMessages],
+    [activeConversation, getPromptResponders, runApplicationAgents, updateConversationMessages],
   );
+
+  const cancelApplicationRun = useCallback(async (conversationId: string) => {
+    if (cancelledConversationRunsRef.current.has(conversationId)) return;
+    const controller = taskControllersRef.current.get(conversationId);
+    const task = conversationTasks[conversationId];
+    const runId = task?.runId;
+    cancelledConversationRunsRef.current.add(conversationId);
+    controller?.abort();
+    setConversationTasks((current) => {
+      const next = { ...current };
+      delete next[conversationId];
+      return next;
+    });
+    try {
+      if (runId) await applicationRuntime.cancel(runId);
+    } catch (error) {
+      cancelledConversationRunsRef.current.delete(conversationId);
+      if (task) {
+        setConversationTasks((current) => ({
+          ...current,
+          [conversationId]: {
+            ...task,
+            status: "error",
+            updatedAt: Date.now(),
+            errorMessage: error instanceof Error ? error.message : "停止任务失败，请重试。",
+          },
+        }));
+      }
+      antMessage.error(error instanceof Error ? error.message : "停止任务失败，请重试。");
+    }
+  }, [antMessage, conversationTasks]);
 
   const runtime = useExternalStoreRuntime<DemoMessage>({
     messages: activeConversation.messages,
@@ -2021,7 +2103,7 @@ function ConversationWorkspace({
     onNew: handleNewMessage,
     onEdit: handleEdit,
     onReload: handleReload,
-    onCancel: async () => taskControllersRef.current.get(activeConversation.id)?.abort(),
+    onCancel: async () => cancelApplicationRun(activeConversation.id),
   });
 
   const switchConversation = (conversationId: string) => {
@@ -2158,7 +2240,7 @@ function ConversationWorkspace({
       const responderApplication = applicationCatalog.find(
         (application) => application.id === catalogApplicationId,
       );
-      void runMockAgents(
+      void runApplicationAgents(
         conversation.id,
         prompt,
         initialFiles,
@@ -2823,6 +2905,7 @@ function ConversationWorkspace({
                       onTargetProjectSelect={selectConversationTargetProject}
                       onBrowseApplication={openConversationTargetApplication}
                       onBrowseProject={openProject}
+                      onStop={() => cancelApplicationRun(activeConversationId)}
                       uploadProps={{ beforeUpload, multiple: true, showUploadList: false }}
                     />
                   </section>
@@ -9331,6 +9414,7 @@ type ThreadViewProps = {
   onTargetProjectSelect: (projectId: string) => void;
   onBrowseApplication: (applicationId: string) => void;
   onBrowseProject: (projectId: string) => void;
+  onStop: () => void;
   uploadProps: UploadProps;
 };
 
@@ -9355,6 +9439,7 @@ function ThreadView({
   onTargetProjectSelect,
   onBrowseApplication,
   onBrowseProject,
+  onStop,
   uploadProps,
 }: ThreadViewProps) {
   const isEmpty = useAuiState((state) => state.thread.isEmpty);
@@ -9425,6 +9510,7 @@ function ThreadView({
             onFileRemove={onFileRemove}
             onTargetApplicationSelect={onTargetApplicationSelect}
             onTargetProjectSelect={onTargetProjectSelect}
+            onStop={onStop}
             uploadProps={uploadProps}
           />
           {isEmpty && !enableApplicationMentions && !selectedCatalogApplication ? (
@@ -10156,6 +10242,7 @@ function Composer({
   onFileRemove,
   onTargetApplicationSelect,
   onTargetProjectSelect,
+  onStop,
   uploadProps,
 }: {
   conversationId: string;
@@ -10174,6 +10261,7 @@ function Composer({
   onFileRemove: (file: SelectedFile) => void;
   onTargetApplicationSelect: (applicationId: string) => void;
   onTargetProjectSelect: (projectId: string) => void;
+  onStop: () => void;
   uploadProps: UploadProps;
 }) {
   const composerInput = unstable_useComposerInput();
@@ -10447,15 +10535,19 @@ function Composer({
           ) : null}
         </Space>
         <ThreadPrimitive.If running>
-          <ComposerPrimitive.Cancel asChild>
-            <Button
-              className="composer-stop-button"
-              aria-label="停止生成"
-              icon={<Square size={12} fill="currentColor" strokeWidth={0} />}
-            >
-              停止
-            </Button>
-          </ComposerPrimitive.Cancel>
+          <Button
+            className="composer-stop-button"
+            aria-label="停止生成"
+            htmlType="button"
+            icon={<Square size={12} fill="currentColor" strokeWidth={0} />}
+            onPointerDown={(event) => {
+              event.preventDefault();
+              onStop();
+            }}
+            onClick={onStop}
+          >
+            停止
+          </Button>
         </ThreadPrimitive.If>
         <ThreadPrimitive.If running={false}>
           <ComposerPrimitive.Send asChild>

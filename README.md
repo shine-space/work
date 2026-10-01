@@ -18,6 +18,11 @@ Open `http://127.0.0.1:5173`.
 Copy `.env.example` to `.env.local` when the application-building workspace is
 hosted separately, then set `VITE_APPLICATION_STUDIO_URL` to its full URL.
 
+The conversation execution boundary is defined in
+[`docs/runtime-integration.md`](docs/runtime-integration.md). The preview uses a
+deterministic mock runtime by default; a backend can implement the same
+normalized event contract without coupling page components to internal DTOs.
+
 ## Pages
 
 - `/apps` shows the five reusable Agent applications and can launch a preconfigured standalone conversation.
