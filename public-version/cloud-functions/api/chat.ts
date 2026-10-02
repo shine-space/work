@@ -25,7 +25,6 @@ type EventContext = {
   clientIp?: string;
 };
 
-const encoder = new TextEncoder();
 const MAX_PROMPT_LENGTH = 4_000;
 const MAX_PARTICIPANTS = 5;
 const MAX_ATTACHMENTS = 8;
@@ -77,8 +76,8 @@ function validate(input: unknown): input is ChatRequest {
   return true;
 }
 
-function writeEvent(controller: ReadableStreamDefaultController<Uint8Array>, event: Record<string, unknown>) {
-  controller.enqueue(encoder.encode(`event: ${String(event.type || "message")}\ndata: ${JSON.stringify(event)}\n\n`));
+function serializeEvent(event: Record<string, unknown>) {
+  return `event: ${String(event.type || "message")}\ndata: ${JSON.stringify(event)}\n\n`;
 }
 
 function buildSystemPrompt(participant: Participant) {
@@ -162,39 +161,37 @@ export default async function onRequest(context: EventContext) {
   if (!context.env.MAKERS_MODELS_KEY) return json(503, "MODEL_NOT_CONFIGURED", "模型服务尚未配置，请稍后再试。");
 
   const runId = crypto.randomUUID();
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const abortController = new AbortController();
-      const timeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
-      context.request.signal.addEventListener("abort", () => abortController.abort(), { once: true });
-      writeEvent(controller, { type: "run.started", runId });
-      try {
-        for (const participant of body.participants) {
-          if (abortController.signal.aborted) throw new DOMException("Aborted", "AbortError");
-          const messageId = crypto.randomUUID();
-          writeEvent(controller, { type: "participant.updated", participantId: participant.id, status: "running" });
-          writeEvent(controller, { type: "message.started", messageId, participantId: participant.id });
-          await streamModel(
-            context.env,
-            participant,
-            body.prompt,
-            (delta) => writeEvent(controller, { type: "message.delta", messageId, participantId: participant.id, delta }),
-            abortController.signal,
-          );
-          writeEvent(controller, { type: "participant.updated", participantId: participant.id, status: "success" });
-        }
-        writeEvent(controller, { type: "run.completed" });
-      } catch (error) {
-        if (abortController.signal.aborted) writeEvent(controller, { type: "run.cancelled" });
-        else writeEvent(controller, { type: "run.failed", message: error instanceof Error ? error.message : "模型服务暂时不可用。" });
-      } finally {
-        clearTimeout(timeout);
-        controller.close();
-      }
-    },
-  });
+  // EdgeOne Cloud Functions currently buffers handler responses and drops a
+  // custom ReadableStream body. Preserve the public SSE contract while
+  // collecting the upstream model stream inside the function first.
+  const events: string[] = [serializeEvent({ type: "run.started", runId })];
+  const abortController = new AbortController();
+  const timeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
+  context.request.signal.addEventListener("abort", () => abortController.abort(), { once: true });
+  try {
+    for (const participant of body.participants) {
+      if (abortController.signal.aborted) throw new DOMException("Aborted", "AbortError");
+      const messageId = crypto.randomUUID();
+      events.push(serializeEvent({ type: "participant.updated", participantId: participant.id, status: "running" }));
+      events.push(serializeEvent({ type: "message.started", messageId, participantId: participant.id }));
+      await streamModel(
+        context.env,
+        participant,
+        body.prompt,
+        (delta) => events.push(serializeEvent({ type: "message.delta", messageId, participantId: participant.id, delta })),
+        abortController.signal,
+      );
+      events.push(serializeEvent({ type: "participant.updated", participantId: participant.id, status: "success" }));
+    }
+    events.push(serializeEvent({ type: "run.completed" }));
+  } catch (error) {
+    if (abortController.signal.aborted) events.push(serializeEvent({ type: "run.cancelled" }));
+    else events.push(serializeEvent({ type: "run.failed", message: error instanceof Error ? error.message : "模型服务暂时不可用。" }));
+  } finally {
+    clearTimeout(timeout);
+  }
 
-  return new Response(stream, {
+  return new Response(events.join(""), {
     headers: {
       "Content-Type": "text/event-stream; charset=utf-8",
       "Cache-Control": "no-store, no-transform",
