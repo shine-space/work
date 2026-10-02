@@ -9897,6 +9897,7 @@ function AssistantMessage({
 }
 
 function MessageProcessDisclosure() {
+  const prefersReducedMotion = useReducedMotion();
   const messageId = useAuiState((state) => state.message.id);
   const startedAt = useAuiState((state) => state.message.metadata?.custom?.processStartedAt);
   const completedAt = useAuiState((state) => state.message.metadata?.custom?.processCompletedAt);
@@ -9950,19 +9951,42 @@ function MessageProcessDisclosure() {
         <span>{statusLabel}</span>
         <ChevronRight className="message-process-chevron" size={14} aria-hidden="true" />
       </button>
-      {expanded ? (
-        <div className="message-process-body">
-          <span className="message-process-step is-complete"><Check size={12} />理解任务目标与上下文</span>
-          <span className={`message-process-step ${hasAnswer || status !== "running" ? "is-complete" : "is-active"}`}>
+      <AnimatePresence initial>
+        {expanded ? (
+          <motion.div
+            className="message-process-body"
+            initial={prefersReducedMotion ? false : { height: 0, opacity: 0, y: -4 }}
+            animate={{ height: "auto", opacity: 1, y: 0 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -3 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.28, ease: [0.2, 0, 0, 1] }}
+          >
+          <motion.span
+            className="message-process-step is-complete"
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: prefersReducedMotion ? 0 : 0.08, ease: [0.2, 0, 0, 1] }}
+          ><Check size={12} />理解任务目标与上下文</motion.span>
+          <motion.span
+            className={`message-process-step ${hasAnswer || status !== "running" ? "is-complete" : "is-active"}`}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: prefersReducedMotion ? 0 : 0.22, ease: [0.2, 0, 0, 1] }}
+          >
             {hasAnswer || status !== "running" ? <Check size={12} /> : <LoaderCircle size={12} />}
             分析信息并确定回答重点
-          </span>
-          <span className={`message-process-step ${status === "completed" ? "is-complete" : hasAnswer && status === "running" ? "is-active" : ""}`}>
+          </motion.span>
+          <motion.span
+            className={`message-process-step ${status === "completed" ? "is-complete" : hasAnswer && status === "running" ? "is-active" : ""}`}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: prefersReducedMotion ? 0 : 0.36, ease: [0.2, 0, 0, 1] }}
+          >
             {status === "completed" ? <Check size={12} /> : hasAnswer && status === "running" ? <LoaderCircle size={12} /> : <span className="message-process-step-dot" />}
             组织并生成最终答复
-          </span>
-        </div>
-      ) : null}
+          </motion.span>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

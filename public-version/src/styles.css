@@ -2166,7 +2166,7 @@ padding: 16px;
 .message-process-step.is-active > svg { animation: message-process-spin 900ms linear infinite; }
 .message-process-chevron { margin-left: auto; flex: 0 0 auto; transition: transform 150ms ease; }
 .message-process-trigger[aria-expanded="true"] .message-process-chevron { transform: rotate(90deg); }
-.message-process-body { position: relative; display: flex; margin: 2px 0 4px 15px; padding: 4px 0 5px 14px; flex-direction: column; gap: 5px; border-left: 1px solid var(--ant-color-border-secondary); }
+.message-process-body { position: relative; display: flex; margin: 2px 0 4px 15px; padding: 4px 0 5px 14px; overflow: hidden; flex-direction: column; gap: 5px; border-left: 1px solid var(--ant-color-border-secondary); transform-origin: top left; }
 .message-process-step { display: flex; min-height: 20px; align-items: center; gap: 7px; color: var(--ant-color-text-tertiary); font-size: 12px; line-height: 20px; }
 .message-process-step > svg,
 .message-process-step-dot { width: 12px; height: 12px; flex: 0 0 12px; }
