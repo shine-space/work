@@ -193,6 +193,7 @@ type MessageProcessMetadata = {
   completedAt?: number;
   status: MessageProcessStatus;
 };
+const expandedMessageProcesses = new Set<string>();
 const SHOW_TASK_ISLAND_PROFILE_ON_HOVER = false;
 const TASK_ISLAND_IDLE_HIDE_DELAY = 10_000;
 const applicationRuntime = createApplicationRuntime();
@@ -9896,6 +9897,7 @@ function AssistantMessage({
 }
 
 function MessageProcessDisclosure() {
+  const messageId = useAuiState((state) => state.message.id);
   const startedAt = useAuiState((state) => state.message.metadata?.custom?.processStartedAt);
   const completedAt = useAuiState((state) => state.message.metadata?.custom?.processCompletedAt);
   const status = useAuiState((state) => state.message.metadata?.custom?.processStatus);
@@ -9904,12 +9906,16 @@ function MessageProcessDisclosure() {
   )));
   const hasProcess = typeof startedAt === "number"
     && (status === "running" || status === "completed" || status === "failed" || status === "cancelled");
-  const [expanded, setExpanded] = useState(status === "running");
+  const [expanded, setExpanded] = useState(
+    () => expandedMessageProcesses.has(messageId) || status === "running" || status === "completed",
+  );
 
   useEffect(() => {
-    if (status === "running") setExpanded(true);
-    if (hasProcess && status !== "running") setExpanded(false);
-  }, [hasProcess, status]);
+    if (status === "running" || status === "completed") {
+      expandedMessageProcesses.add(messageId);
+      setExpanded(true);
+    }
+  }, [messageId, status]);
 
   if (!hasProcess) return null;
 
@@ -9931,7 +9937,12 @@ function MessageProcessDisclosure() {
         type="button"
         className="message-process-trigger"
         aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
+        onClick={() => setExpanded((value) => {
+          const next = !value;
+          if (next) expandedMessageProcesses.add(messageId);
+          else expandedMessageProcesses.delete(messageId);
+          return next;
+        })}
       >
         <span className="message-process-status-icon" aria-hidden="true">
           {status === "running" ? <LoaderCircle size={14} /> : status === "completed" ? <CircleCheck size={14} /> : <CircleAlert size={14} />}
