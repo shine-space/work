@@ -167,7 +167,7 @@ export default async function onRequest(context: EventContext) {
   const events: string[] = [serializeEvent({ type: "run.started", runId })];
   const abortController = new AbortController();
   const timeout = setTimeout(() => abortController.abort(), REQUEST_TIMEOUT_MS);
-  context.request.signal.addEventListener("abort", () => abortController.abort(), { once: true });
+  context.request.signal?.addEventListener("abort", () => abortController.abort(), { once: true });
   try {
     for (const participant of body.participants) {
       if (abortController.signal.aborted) throw new DOMException("Aborted", "AbortError");
