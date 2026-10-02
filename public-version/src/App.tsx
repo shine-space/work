@@ -147,6 +147,7 @@ import {
   type TeamResourceGroup,
 } from "./data";
 import FolderFloat from "./components/FolderFloat";
+import ThoughtLine from "./components/ThoughtLine";
 import { createApplicationRuntime, type RuntimeEvent } from "./runtime";
 import { createTheme } from "./theme";
 
@@ -193,7 +194,6 @@ type MessageProcessMetadata = {
   completedAt?: number;
   status: MessageProcessStatus;
 };
-const expandedMessageProcesses = new Set<string>();
 const SHOW_TASK_ISLAND_PROFILE_ON_HOVER = false;
 const TASK_ISLAND_IDLE_HIDE_DELAY = 10_000;
 const applicationRuntime = createApplicationRuntime();
@@ -9897,8 +9897,6 @@ function AssistantMessage({
 }
 
 function MessageProcessDisclosure() {
-  const prefersReducedMotion = useReducedMotion();
-  const messageId = useAuiState((state) => state.message.id);
   const startedAt = useAuiState((state) => state.message.metadata?.custom?.processStartedAt);
   const completedAt = useAuiState((state) => state.message.metadata?.custom?.processCompletedAt);
   const status = useAuiState((state) => state.message.metadata?.custom?.processStatus);
@@ -9907,16 +9905,6 @@ function MessageProcessDisclosure() {
   )));
   const hasProcess = typeof startedAt === "number"
     && (status === "running" || status === "completed" || status === "failed" || status === "cancelled");
-  const [expanded, setExpanded] = useState(
-    () => expandedMessageProcesses.has(messageId) || status === "running" || status === "completed",
-  );
-
-  useEffect(() => {
-    if (status === "running" || status === "completed") {
-      expandedMessageProcesses.add(messageId);
-      setExpanded(true);
-    }
-  }, [messageId, status]);
 
   if (!hasProcess) return null;
 
@@ -9924,70 +9912,35 @@ function MessageProcessDisclosure() {
     1,
     Math.round(((typeof completedAt === "number" ? completedAt : Date.now()) - startedAt) / 1000),
   );
-  const statusLabel = status === "running"
-    ? (hasAnswer ? "正在组织并生成答复" : "正在理解与分析需求")
-    : status === "completed"
-      ? `处理完成 · 用时 ${durationSeconds} 秒`
-      : status === "failed"
-        ? `处理未完成 · 用时 ${durationSeconds} 秒`
-        : `处理已停止 · 用时 ${durationSeconds} 秒`;
+  const working = status === "running";
+  const steps = working && !hasAnswer
+    ? ["理解任务目标与上下文", "分析信息并确定回答重点"]
+    : ["理解任务目标与上下文", "分析信息并确定回答重点", "组织并生成最终答复"];
+  const doneLabel = status === "completed"
+    ? "思考完成，用时"
+    : status === "failed"
+      ? "处理未完成，用时"
+      : "处理已停止，用时";
 
   return (
-    <div className={`message-process is-${status}`}>
-      <button
-        type="button"
-        className="message-process-trigger"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => {
-          const next = !value;
-          if (next) expandedMessageProcesses.add(messageId);
-          else expandedMessageProcesses.delete(messageId);
-          return next;
-        })}
-      >
-        <span className="message-process-status-icon" aria-hidden="true">
-          {status === "running" ? <LoaderCircle size={14} /> : status === "completed" ? <CircleCheck size={14} /> : <CircleAlert size={14} />}
-        </span>
-        <span>{statusLabel}</span>
-        <ChevronRight className="message-process-chevron" size={14} aria-hidden="true" />
-      </button>
-      <AnimatePresence initial>
-        {expanded ? (
-          <motion.div
-            className="message-process-body"
-            initial={prefersReducedMotion ? false : { height: 0, opacity: 0, y: -4 }}
-            animate={{ height: "auto", opacity: 1, y: 0 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { height: 0, opacity: 0, y: -3 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.28, ease: [0.2, 0, 0, 1] }}
-          >
-          <motion.span
-            className="message-process-step is-complete"
-            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: prefersReducedMotion ? 0 : 0.08, ease: [0.2, 0, 0, 1] }}
-          ><Check size={12} />理解任务目标与上下文</motion.span>
-          <motion.span
-            className={`message-process-step ${hasAnswer || status !== "running" ? "is-complete" : "is-active"}`}
-            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: prefersReducedMotion ? 0 : 0.22, ease: [0.2, 0, 0, 1] }}
-          >
-            {hasAnswer || status !== "running" ? <Check size={12} /> : <LoaderCircle size={12} />}
-            分析信息并确定回答重点
-          </motion.span>
-          <motion.span
-            className={`message-process-step ${status === "completed" ? "is-complete" : hasAnswer && status === "running" ? "is-active" : ""}`}
-            initial={prefersReducedMotion ? false : { opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.24, delay: prefersReducedMotion ? 0 : 0.36, ease: [0.2, 0, 0, 1] }}
-          >
-            {status === "completed" ? <Check size={12} /> : hasAnswer && status === "running" ? <LoaderCircle size={12} /> : <span className="message-process-step-dot" />}
-            组织并生成最终答复
-          </motion.span>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </div>
+    <ThoughtLine
+      className={`message-process is-${status}`}
+      working={working}
+      steps={steps}
+      label={hasAnswer ? "正在组织答复…" : "正在思考…"}
+      doneLabel={doneLabel}
+      elapsed={working ? undefined : durationSeconds}
+      fontSize={13}
+      breathPeriod={1.6}
+      breathDepth={0.42}
+      settleDuration={350}
+      settleBlur={2}
+      collapsible
+      collapseOnSettle={false}
+      showTimer
+      color="var(--ant-color-text-secondary)"
+      glyphColor="var(--ant-color-primary)"
+    />
   );
 }
 
