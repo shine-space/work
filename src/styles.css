@@ -2154,32 +2154,6 @@ padding: 16px;
 .message-surface p { margin: 0; white-space: pre-wrap; }
 .message-mention { color: var(--mention-color); }
 .assistant-message-surface { border-radius: var(--ty-radius-4) var(--ty-radius-16) var(--ty-radius-16) var(--ty-radius-16); background: var(--ant-color-bg-layout); }
-.message-process { width: min(100%, 520px); color: var(--ant-color-text-secondary); }
-.message-process-trigger { display: flex; width: 100%; min-height: 30px; padding: 4px 8px; align-items: center; gap: 7px; border: 0; border-radius: var(--ty-radius-8); background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; line-height: 20px; text-align: left; transition: background-color 140ms ease, color 140ms ease; }
-.message-process-trigger:hover { background: var(--ant-color-fill-tertiary); color: var(--ant-color-text); }
-.message-process-trigger:focus-visible { outline: 2px solid var(--ant-color-primary-border); outline-offset: 1px; }
-.message-process-status-icon { display: grid; width: 16px; height: 16px; flex: 0 0 16px; place-items: center; color: var(--ant-color-primary); }
-.message-process.is-completed .message-process-status-icon { color: var(--ant-color-success); }
-.message-process.is-failed .message-process-status-icon { color: var(--ant-color-error); }
-.message-process.is-cancelled .message-process-status-icon { color: var(--ant-color-text-tertiary); }
-.message-process.is-running .message-process-status-icon svg,
-.message-process-step.is-active > svg { animation: message-process-spin 900ms linear infinite; }
-.message-process-chevron { margin-left: auto; flex: 0 0 auto; transition: transform 150ms ease; }
-.message-process-trigger[aria-expanded="true"] .message-process-chevron { transform: rotate(90deg); }
-.message-process-body { position: relative; display: flex; margin: 2px 0 4px 15px; padding: 4px 0 5px 14px; flex-direction: column; gap: 5px; border-left: 1px solid var(--ant-color-border-secondary); }
-.message-process-step { display: flex; min-height: 20px; align-items: center; gap: 7px; color: var(--ant-color-text-tertiary); font-size: 12px; line-height: 20px; }
-.message-process-step > svg,
-.message-process-step-dot { width: 12px; height: 12px; flex: 0 0 12px; }
-.message-process-step.is-complete { color: var(--ant-color-text-secondary); }
-.message-process-step.is-active { color: var(--ant-color-primary); }
-.message-process-step-dot { position: relative; }
-.message-process-step-dot::after { position: absolute; top: 4px; left: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--ant-color-fill); content: ""; }
-@keyframes message-process-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) {
-  .message-process.is-running .message-process-status-icon svg,
-  .message-process-step.is-active > svg { animation: none; }
-  .message-process-chevron { transition: none; }
-}
 .user-message-surface { border-radius: var(--ty-radius-16) var(--ty-radius-4) var(--ty-radius-16) var(--ty-radius-16); }
 .message-actions { display: flex; min-height: 24px; gap: 2px; }
 .message-actions .ant-btn { width: 22px; min-width: 22px; height: 22px; padding: 0; color: var(--ant-color-text-secondary); }

@@ -187,12 +187,6 @@ type ConversationTaskState = {
   participants: ConversationTaskParticipant[];
   errorMessage?: string;
 };
-type MessageProcessStatus = "running" | "completed" | "failed" | "cancelled";
-type MessageProcessMetadata = {
-  startedAt: number;
-  completedAt?: number;
-  status: MessageProcessStatus;
-};
 const SHOW_TASK_ISLAND_PROFILE_ON_HOVER = false;
 const TASK_ISLAND_IDLE_HIDE_DELAY = 10_000;
 const applicationRuntime = createApplicationRuntime();
@@ -1179,46 +1173,16 @@ function createMessage(
   role: "user" | "assistant",
   text: string,
   catalogApplicationId?: string | null,
-  process?: MessageProcessMetadata,
 ): DemoMessage {
-  const customMetadata = role === "assistant"
-    ? {
-        ...(catalogApplicationId ? { catalogApplicationId } : {}),
-        ...(process
-          ? {
-              processStartedAt: process.startedAt,
-              processCompletedAt: process.completedAt,
-              processStatus: process.status,
-            }
-          : {}),
-      }
-    : undefined;
   return {
     id,
     role,
     content: [{ type: "text", text }],
     createdAt: new Date(),
-    ...(customMetadata && Object.keys(customMetadata).length > 0
-      ? { metadata: { custom: customMetadata } }
+    ...(role === "assistant" && catalogApplicationId
+      ? { metadata: { custom: { catalogApplicationId } } }
       : {}),
   };
-}
-
-function updateMessageProcessStatus(message: DemoMessage, status: MessageProcessStatus) {
-  if (message.role !== "assistant") return message;
-  const custom = message.metadata?.custom ?? {};
-  if (typeof custom.processStartedAt !== "number") return message;
-  return {
-    ...message,
-    metadata: {
-      ...message.metadata,
-      custom: {
-        ...custom,
-        processStatus: status,
-        processCompletedAt: Date.now(),
-      },
-    },
-  } satisfies DemoMessage;
 }
 
 function createIdempotencyKey(conversationId: string) {
@@ -1639,7 +1603,6 @@ function ConversationWorkspace({
         [conversationId]: { ...taskIdentity, status: "running", updatedAt: Date.now() },
       }));
       let accumulatedMessages = [...baseMessages];
-      const runMessageIds = new Set<string>();
       const participantResponders = new Map(
         taskParticipants.map((participant, index) => [participant.applicationId, responders[index]]),
       );
@@ -1685,16 +1648,9 @@ function ConversationWorkspace({
         if (event.type === "message.started") {
           const responder = participantResponders.get(event.participantId);
           if (!accumulatedMessages.some((message) => message.id === event.messageId)) {
-            runMessageIds.add(event.messageId);
             accumulatedMessages = [
               ...accumulatedMessages,
-              createMessage(
-                event.messageId,
-                "assistant",
-                "",
-                responder?.catalogApplicationId,
-                { startedAt: Date.now(), status: "running" },
-              ),
+              createMessage(event.messageId, "assistant", "", responder?.catalogApplicationId),
             ];
             updateConversationMessages(conversationId, () => accumulatedMessages);
           }
@@ -1704,10 +1660,12 @@ function ConversationWorkspace({
         if (event.type === "message.delta") {
           accumulatedMessages = accumulatedMessages.map((message) => {
             if (message.id !== event.messageId) return message;
-            return {
-              ...message,
-              content: [{ type: "text" as const, text: `${getStoredMessageText(message)}${event.delta}` }],
-            };
+            return createMessage(
+              message.id,
+              "assistant",
+              `${getStoredMessageText(message)}${event.delta}`,
+              participantResponders.get(event.participantId)?.catalogApplicationId,
+            );
           });
           updateConversationMessages(conversationId, () => accumulatedMessages);
           return;
@@ -1726,10 +1684,6 @@ function ConversationWorkspace({
         }
 
         if (event.type === "run.failed") {
-          accumulatedMessages = accumulatedMessages.map((message) => (
-            runMessageIds.has(message.id) ? updateMessageProcessStatus(message, "failed") : message
-          ));
-          updateConversationMessages(conversationId, () => accumulatedMessages);
           setConversationTasks((current) => ({
             ...current,
             [conversationId]: {
@@ -1743,10 +1697,6 @@ function ConversationWorkspace({
         }
 
         if (event.type === "run.completed") {
-          accumulatedMessages = accumulatedMessages.map((message) => (
-            runMessageIds.has(message.id) ? updateMessageProcessStatus(message, "completed") : message
-          ));
-          updateConversationMessages(conversationId, () => accumulatedMessages);
           setConversationTasks((current) => {
             const task = current[conversationId] ?? { ...taskIdentity, participants: taskParticipants };
             return {
@@ -1767,10 +1717,6 @@ function ConversationWorkspace({
         }
 
         if (event.type === "run.cancelled") {
-          accumulatedMessages = accumulatedMessages.map((message) => (
-            runMessageIds.has(message.id) ? updateMessageProcessStatus(message, "cancelled") : message
-          ));
-          updateConversationMessages(conversationId, () => accumulatedMessages);
           setConversationTasks((current) => {
             const next = { ...current };
             delete next[conversationId];
@@ -1807,10 +1753,6 @@ function ConversationWorkspace({
         );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
-          accumulatedMessages = accumulatedMessages.map((message) => (
-            runMessageIds.has(message.id) ? updateMessageProcessStatus(message, "cancelled") : message
-          ));
-          updateConversationMessages(conversationId, () => accumulatedMessages);
           if (taskControllersRef.current.get(conversationId) === controller) {
             setConversationTasks((current) => {
               const next = { ...current };
@@ -1819,10 +1761,6 @@ function ConversationWorkspace({
             });
           }
         } else {
-          accumulatedMessages = accumulatedMessages.map((message) => (
-            runMessageIds.has(message.id) ? updateMessageProcessStatus(message, "failed") : message
-          ));
-          updateConversationMessages(conversationId, () => accumulatedMessages);
           setConversationTasks((current) => ({
             ...current,
             [conversationId]: {
@@ -9872,7 +9810,6 @@ function AssistantMessage({
             <Tag className="message-administrator-tag" color="blue" variant="filled">管理员</Tag>
           ) : null}
         </div>
-        <MessageProcessDisclosure />
         <div className="message-surface assistant-message-surface">
           <MessagePrimitive.Parts>
             {({ part }) => part.type === "text" ? <MessagePartPrimitive.Text /> : null}
@@ -9892,67 +9829,6 @@ function AssistantMessage({
         </ActionBarPrimitive.Root>
       </div>
     </MessagePrimitive.Root>
-  );
-}
-
-function MessageProcessDisclosure() {
-  const startedAt = useAuiState((state) => state.message.metadata?.custom?.processStartedAt);
-  const completedAt = useAuiState((state) => state.message.metadata?.custom?.processCompletedAt);
-  const status = useAuiState((state) => state.message.metadata?.custom?.processStatus);
-  const hasAnswer = useAuiState((state) => state.message.parts.some((part) => (
-    part.type === "text" && part.text.length > 0
-  )));
-  const hasProcess = typeof startedAt === "number"
-    && (status === "running" || status === "completed" || status === "failed" || status === "cancelled");
-  const [expanded, setExpanded] = useState(status === "running");
-
-  useEffect(() => {
-    if (status === "running") setExpanded(true);
-    if (hasProcess && status !== "running") setExpanded(false);
-  }, [hasProcess, status]);
-
-  if (!hasProcess) return null;
-
-  const durationSeconds = Math.max(
-    1,
-    Math.round(((typeof completedAt === "number" ? completedAt : Date.now()) - startedAt) / 1000),
-  );
-  const statusLabel = status === "running"
-    ? (hasAnswer ? "正在组织并生成答复" : "正在理解与分析需求")
-    : status === "completed"
-      ? `处理完成 · 用时 ${durationSeconds} 秒`
-      : status === "failed"
-        ? `处理未完成 · 用时 ${durationSeconds} 秒`
-        : `处理已停止 · 用时 ${durationSeconds} 秒`;
-
-  return (
-    <div className={`message-process is-${status}`}>
-      <button
-        type="button"
-        className="message-process-trigger"
-        aria-expanded={expanded}
-        onClick={() => setExpanded((value) => !value)}
-      >
-        <span className="message-process-status-icon" aria-hidden="true">
-          {status === "running" ? <LoaderCircle size={14} /> : status === "completed" ? <CircleCheck size={14} /> : <CircleAlert size={14} />}
-        </span>
-        <span>{statusLabel}</span>
-        <ChevronRight className="message-process-chevron" size={14} aria-hidden="true" />
-      </button>
-      {expanded ? (
-        <div className="message-process-body">
-          <span className="message-process-step is-complete"><Check size={12} />理解任务目标与上下文</span>
-          <span className={`message-process-step ${hasAnswer || status !== "running" ? "is-complete" : "is-active"}`}>
-            {hasAnswer || status !== "running" ? <Check size={12} /> : <LoaderCircle size={12} />}
-            分析信息并确定回答重点
-          </span>
-          <span className={`message-process-step ${status === "completed" ? "is-complete" : hasAnswer && status === "running" ? "is-active" : ""}`}>
-            {status === "completed" ? <Check size={12} /> : hasAnswer && status === "running" ? <LoaderCircle size={12} /> : <span className="message-process-step-dot" />}
-            组织并生成最终答复
-          </span>
-        </div>
-      ) : null}
-    </div>
   );
 }
 
