@@ -1690,9 +1690,11 @@ button.settings-logout-item:focus-visible > svg { color: currentColor !important
 .workspace-schedule-copy > span { color: var(--ant-color-text-tertiary); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
 .workspace-schedule-time { color: var(--ant-color-text-tertiary); font-size: 12px; line-height: 18px; white-space: nowrap; }
 .workspace-schedule-add { display: grid; width: 28px; height: 28px; place-items: center; border: 1px solid var(--ant-color-border-secondary); border-radius: var(--ty-radius-8); color: var(--ant-color-text-secondary); background: var(--ant-color-bg-container); }
-.application-skills-panel { display: flex; min-height: 0; flex-direction: column; gap: 14px; }
+.application-skills-panel { display: flex; height: 100%; min-height: 0; flex-direction: column; gap: 14px; }
 .application-skills-panel-controls { display: flex; flex-direction: column; gap: 10px; }
 .application-skills-panel-filters { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.application-skills-panel > .applications-empty { display: flex; min-height: 160px; margin: 0; flex: 1; flex-direction: column; align-items: center; justify-content: center; }
+.project-workspace-demo-body > .ant-empty { display: flex; min-height: 100%; margin: 0; flex-direction: column; align-items: center; justify-content: center; }
 .office-platform-panel { display: flex; flex-direction: column; }
 .office-platform-panel > SPAN { margin: 0; padding:0 0 12px;color: var(--ant-color-text); font-size: 12px; line-height: 20px;  color: var(--ant-color-text-tertiary);}
 .office-platform-list { display: grid;gap: 8px; }
@@ -2610,7 +2612,11 @@ padding: 16px;
 .applications-category-pill:hover { border-color: var(--ant-color-border); color: var(--ant-color-text); }
 .applications-category-pill:focus-visible { outline: 2px solid var(--ant-color-primary-border); outline-offset: 2px; }
 .applications-category-pill.is-active { border-color: var(--ant-color-border-secondary); background: var(--hover-bg); color: var(--ant-color-text); }
-.applications-count { padding-top: 4px; color: var(--ant-color-text-tertiary); font-size: 13px; white-space: nowrap; }
+.applications-installed-filter { display: inline-flex; min-height: 30px; padding: 3px 14px; flex: 0 0 auto; align-items: center; gap: 5px; border: 1px solid transparent; border-radius: var(--ty-radius-8); background: transparent; color: var(--ant-color-text-tertiary); cursor: pointer; font: inherit; font-size: 13px; line-height: 22px; white-space: nowrap; transition: border-color 150ms ease, background 150ms ease, color 150ms ease; }
+.applications-installed-filter:hover { background: var(--hover-bg); color: var(--ant-color-text); }
+.applications-installed-filter:focus-visible { outline: 2px solid var(--ant-color-primary-border); outline-offset: 2px; }
+.applications-installed-filter.is-active,
+.applications-installed-filter.is-active:hover { border-color: var(--ui-color-neutral-12); background: var(--ant-color-bg-container); color: var(--ui-color-neutral-12); }
 .applications-category-shell { position: relative; display: flex; max-width: 780px; min-width: 0; flex: 1; align-items: center; gap: 4px; }
 .applications-category-tabs { max-width: 100%; margin: 0; padding: 0; background: transparent; }
 .applications-category-tabs .ant-segmented-group { gap: 18px; }
@@ -2725,6 +2731,7 @@ padding: 16px;
 .project-application-cover { display: block; width: 16px; height: 16px; border-radius: var(--ty-radius-4); background: var(--ui-color-white); object-fit: cover; }
 .project-application-selector-cover { display: block; width: 16px; height: 16px; border-radius: var(--ty-radius-4); background: var(--ui-color-white); object-fit: cover; }
 .applications-empty { margin: 56px 48px; }
+.applications-results-scroll > .applications-empty { display: flex; min-height: 240px; margin: 0 24px 24px; flex: 1; flex-direction: column; align-items: center; justify-content: center; }
 .application-card-action { display: inline-flex; align-items: center; gap: 6px; color: var(--ant-color-text-secondary); font-size: 12px; font-weight: var(--ant-font-weight-strong); }
 .application-selector-empty { color: var(--ant-color-text-placeholder) !important; font-weight: 400; }
 .sidebar-open-button.is-visible ~ .conversation-content .applications-hero-copy { padding-left: 64px; }
@@ -3119,7 +3126,7 @@ padding: 16px;
   .applications-filterbar { align-items: stretch; flex-direction: column; gap: 8px; }
   .applications-category-pills { width: 100%; }
   .skill-filter-actions { width: 100%; justify-content: flex-end; }
-  .applications-count { padding: 0; align-self: flex-end; }
+  .applications-installed-filter { align-self: flex-end; }
   .applications-category-shell { width: 100%; max-width: none; flex: 1 0 100%; }
   .applications-category-tabs { min-width: 0; height: 32px; }
   .applications-category-tabs .ant-segmented-group { gap: 14px; }

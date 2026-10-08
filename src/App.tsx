@@ -4466,19 +4466,22 @@ function ProjectWorkspaceRail({
                     value={activeSkillCategory}
                     onChange={setActiveSkillCategory}
                   />
-                  <button
-                    className={`applications-category-pill${showInstalledSkills ? " is-active" : ""}`}
-                    type="button"
-                    aria-pressed={showInstalledSkills}
-                    onClick={() => setShowInstalledSkills((current) => !current)}
-                  >
-                    我安装的
-                  </button>
+                  <Tooltip title="仅显示已安装的 Skill">
+                    <button
+                      className={`applications-installed-filter${showInstalledSkills ? " is-active" : ""}`}
+                      type="button"
+                      aria-pressed={showInstalledSkills}
+                      onClick={() => setShowInstalledSkills((current) => !current)}
+                    >
+                      <Check size={14} aria-hidden="true" />
+                      已安装
+                    </button>
+                  </Tooltip>
                 </div>
               </div>
               <SkillCardCollection
                 className="is-workspace-panel"
-                emptyDescription="没有匹配的 Skill"
+                emptyDescription={showInstalledSkills ? "没有匹配的已安装 Skill" : "没有匹配的 Skill"}
                 skills={visibleSkills}
                 onOpenSkill={setSelectedSkill}
                 renderAction={(skill) => {
@@ -5703,12 +5706,16 @@ function SkillDetailModal({
 
 function DigitalEmployeeDetailModal({
   application,
+  conversation,
   onClose,
   onCreate,
+  onOpenConversation,
 }: {
   application: CatalogApplication | null;
+  conversation?: Conversation;
   onClose: () => void;
   onCreate: (application: CatalogApplication) => void;
+  onOpenConversation: (conversationId: string) => void;
 }) {
   const reduceMotion = useReducedMotion();
   if (!application) return null;
@@ -5732,10 +5739,14 @@ function DigitalEmployeeDetailModal({
             block
             onClick={() => {
               onClose();
+              if (conversation) {
+                onOpenConversation(conversation.id);
+                return;
+              }
               onCreate(application);
             }}
           >
-            创建
+            {conversation ? "发起对话" : "创建"}
           </Button>
         </div>
       )}
@@ -6437,21 +6448,11 @@ function ApplicationsHome({
   const [activeCategory, setActiveCategory] = useState<ApplicationCategory>("全部");
   const [activeSkillCategory, setActiveSkillCategory] = useState<SkillCategory>("全部");
   const [applicationSearch, setApplicationSearch] = useState("");
+  const [showInstalledApplications, setShowInstalledApplications] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<SkillDefinition | null>(null);
   const [selectedApplication, setSelectedApplication] = useState<CatalogApplication | null>(null);
   const [creatingApplication, setCreatingApplication] = useState<CatalogApplication | null>(null);
   const normalizedApplicationSearch = applicationSearch.trim().toLocaleLowerCase();
-  const visibleApplications = applicationCatalog.filter(
-    (application) => {
-      const matchesCategory = activeCategory === "全部" || application.category === activeCategory;
-      const matchesSearch = !normalizedApplicationSearch
-        || `${application.name} ${application.category} ${application.description}`.toLocaleLowerCase().includes(normalizedApplicationSearch);
-      return matchesCategory && matchesSearch;
-    },
-  );
-  const createdDigitalEmployees = useMemo(() => {
-    return getCreatedDigitalEmployees(conversations);
-  }, [conversations]);
   const createdConversationByApplicationId = useMemo(() => {
     const result = new Map<string, Conversation>();
     conversations.forEach((conversation) => {
@@ -6462,6 +6463,18 @@ function ApplicationsHome({
       }
     });
     return result;
+  }, [conversations]);
+  const visibleApplications = applicationCatalog.filter(
+    (application) => {
+      const matchesCategory = activeCategory === "全部" || application.category === activeCategory;
+      const matchesSearch = !normalizedApplicationSearch
+        || `${application.name} ${application.category} ${application.description}`.toLocaleLowerCase().includes(normalizedApplicationSearch);
+      const matchesInstalled = !showInstalledApplications || createdConversationByApplicationId.has(application.id);
+      return matchesCategory && matchesSearch && matchesInstalled;
+    },
+  );
+  const createdDigitalEmployees = useMemo(() => {
+    return getCreatedDigitalEmployees(conversations);
   }, [conversations]);
   const visibleSkills = skillCatalog.filter((skill) => {
     const matchesCategory = activeSkillCategory === "全部" || skill.category === activeSkillCategory;
@@ -6581,7 +6594,17 @@ function ApplicationsHome({
                   <Button size="small" disabled>导入 Skill</Button>
                 </div>
               ) : (
-                <Text className="applications-count">{visibleApplications.length} 个数字员工</Text>
+                <Tooltip title="仅显示已创建的数字员工">
+                  <button
+                    className={`applications-installed-filter${showInstalledApplications ? " is-active" : ""}`}
+                    type="button"
+                    aria-pressed={showInstalledApplications}
+                    onClick={() => setShowInstalledApplications((current) => !current)}
+                  >
+                    <Check size={14} aria-hidden="true" />
+                    已创建
+                  </button>
+                </Tooltip>
               )}
               </div>
             </div>
@@ -6638,7 +6661,11 @@ function ApplicationsHome({
               </div>
             ) : null}
             {activeProductTab === "digital-employees" && !visibleApplications.length ? (
-              <Empty className="applications-empty" image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配的数字员工" />
+              <Empty
+                className="applications-empty"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={showInstalledApplications ? "没有匹配的已创建数字员工" : "没有匹配的数字员工"}
+              />
             ) : null}
             {activeProductTab === "skills" ? (
               <SkillCardCollection
@@ -6709,8 +6736,12 @@ function ApplicationsHome({
       />
       <DigitalEmployeeDetailModal
         application={selectedApplication}
+        conversation={selectedApplication
+          ? createdConversationByApplicationId.get(selectedApplication.id)
+          : undefined}
         onClose={() => setSelectedApplication(null)}
         onCreate={setCreatingApplication}
+        onOpenConversation={onOpenConversation}
       />
       <CreateDigitalEmployeeModal
         application={creatingApplication}
