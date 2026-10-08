@@ -7746,6 +7746,7 @@ function ScheduledTaskModal({
             <Form.Item name="frequency" noStyle>
               <Select
                 aria-label="执行频率"
+                suffixIcon={<ChevronDown size={14} />}
                 options={[
                   { label: "不重复", value: "once" },
                   { label: "每天", value: "daily" },
@@ -7768,7 +7769,11 @@ function ScheduledTaskModal({
               </Form.Item>
             ) : selectedFrequency === "weekly" || selectedFrequency === "monthly" ? (
               <Form.Item name="frequencyDetail" noStyle>
-                <Select aria-label="执行日期" options={detailOptions} />
+                <Select
+                  aria-label="执行日期"
+                  suffixIcon={<ChevronDown size={14} />}
+                  options={detailOptions}
+                />
               </Form.Item>
             ) : null}
             <Form.Item name="time" noStyle>
@@ -9381,6 +9386,7 @@ function ConversationNavigation({
                 value={newProjectAdministratorId}
                 placeholder="请先勾选数字员工"
                 aria-label="群组项目管理员"
+                suffixIcon={<ChevronDown size={14} />}
                 options={selectedProjectApplications.map((application) => ({
                   value: application.id,
                   label: application.name,
