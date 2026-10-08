@@ -13,6 +13,7 @@ export type Conversation = {
   agentId: string;
   applicationId: ApplicationId | null;
   catalogApplicationId?: string | null;
+  applicationAlias?: string | null;
   title: string;
   updatedAt: string;
   messages: DemoMessage[];
@@ -95,6 +96,29 @@ const conversationMessages = (
     catalogApplicationId,
   ),
 ];
+
+const defaultDigitalEmployeeNames: Record<string, string> = {
+  "senior-developer": "凌峰",
+  "senior-financial-analyst": "衡远",
+  "ui-designer": "知绘",
+  "fullstack-developer": "构云",
+  "product-planning-expert": "启程",
+  "data-analyst": "数澜",
+  "project-management-expert": "领航",
+  "senior-legal-advisor": "法衡",
+  "hr-manager": "知人",
+  "market-strategy-expert": "拓维",
+  "brand-creative-director": "映川",
+  "user-research-expert": "洞见",
+  "business-development-manager": "拓境",
+  "senior-qa-engineer": "守真",
+  "operations-architect": "云巡",
+  "cybersecurity-expert": "安盾",
+  "supply-chain-analyst": "链策",
+  "customer-success-manager": "长青",
+  "industry-research-consultant": "观澜",
+  "enterprise-knowledge-manager": "知库",
+};
 
 export const projects: Project[] = [
   {
@@ -215,7 +239,7 @@ const standaloneDigitalEmployeeConversations: Conversation[] = [
   ),
 }));
 
-export const initialConversations: Conversation[] = [
+const initialConversationSeed: Conversation[] = [
   ...standaloneDigitalEmployeeConversations,
   {
     id: "conversation-standalone-brief",
@@ -648,6 +672,16 @@ export const initialConversations: Conversation[] = [
     ),
   },
 ];
+
+export const initialConversations: Conversation[] = initialConversationSeed.map((conversation) => {
+  if (conversation.projectId !== null || !conversation.catalogApplicationId) return conversation;
+  return {
+    ...conversation,
+    applicationAlias: defaultDigitalEmployeeNames[conversation.catalogApplicationId]
+      ?? conversation.applicationAlias
+      ?? null,
+  };
+});
 
 export const generatedFiles: GeneratedFile[] = [
   {

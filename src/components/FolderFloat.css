@@ -89,7 +89,7 @@
   border-radius: var(--ff-r);
   background: linear-gradient(180deg, color-mix(in srgb, var(--ff-front) 92%, #fff), var(--ff-front) 60%);
   color: var(--ff-label);
-  box-shadow: 0 -10px 24px rgba(0, 0, 0, 0.28);
+  box-shadow: 0 -8px 22px rgba(39, 39, 42, 0.14);
   transform: perspective(600px) rotateX(calc(-1 * var(--ff-rest)));
   transform-origin: 50% 100%;
   transition: transform var(--ff-open) var(--ff-ease-out);

@@ -65,6 +65,10 @@ export class MockApplicationRuntime implements ApplicationRuntime {
         onEvent({ type: "message.started", messageId, participantId: participant.id });
         const answer = createAnswer(request, participant);
 
+        // Keep the pre-token state observable in the demo. A real backend naturally
+        // spends this time preparing the first streamed chunk.
+        await delay(1800, signal);
+
         for (let index = 0; index < answer.length; index += 2) {
           await delay(24, signal);
           onEvent({

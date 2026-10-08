@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import {
   ActionBarPrimitive,
   AssistantRuntimeProvider,
@@ -81,6 +81,7 @@ import {
   ListCollapse,
   ListChevronsDownUp,
   ListFilter,
+  ListMinus,
   LayoutGrid,
   List,
   Languages,
@@ -233,9 +234,7 @@ const officePlatformCatalog = [
 
 const conversationMoreMenuItems: MenuProps["items"] = [
   { key: "rename", icon: <Pencil size={14} />, label: "重命名" },
-  { key: "archive", icon: <Archive size={14} />, label: "归档（演示）", disabled: true },
-  { type: "divider" },
-  { key: "delete", icon: <Trash2 size={14} />, label: "删除", danger: true },
+  { key: "remove", icon: <ListMinus size={14} />, label: "从列表中移除" },
 ];
 
 const getNavigationConversationMenuItems = (pinned: boolean): MenuProps["items"] => [
@@ -764,6 +763,7 @@ const isSkillInstalledAtTarget = (
 type CatalogApplication = {
   id: string;
   name: string;
+  originalName?: string;
   category: ApplicationCardCategory;
   description: string;
   cover: string;
@@ -938,19 +938,30 @@ function NavigationProjectIcon({ project }: { project: Project }) {
   );
 }
 
-const getConversationCatalogApplication = (conversation: Conversation) => (
-  applicationCatalog.find((application) => application.id === conversation.catalogApplicationId)
-  ?? applicationCatalog.find((application) => application.contextId === conversation.applicationId)
+const getConversationCatalogTemplate = (conversation: Conversation) => (
+  applicationCatalog.find((item) => item.id === conversation.catalogApplicationId)
+    ?? applicationCatalog.find((item) => item.contextId === conversation.applicationId)
 );
 
+const getConversationCatalogApplication = (conversation: Conversation) => {
+  const application = getConversationCatalogTemplate(conversation);
+  const alias = conversation.applicationAlias?.trim();
+  return application && alias ? { ...application, name: alias, originalName: application.name } : application;
+};
+
 function getCreatedDigitalEmployees(conversations: Conversation[]) {
-  const createdIds = new Set(
-    conversations
-      .filter((conversation) => conversation.projectId === null)
-      .map((conversation) => getConversationCatalogApplication(conversation)?.id)
-      .filter((applicationId): applicationId is string => Boolean(applicationId)),
-  );
-  return applicationCatalog.filter((application) => createdIds.has(application.id));
+  const createdApplications = new Map<string, CatalogApplication>();
+  conversations
+    .filter((conversation) => conversation.projectId === null)
+    .forEach((conversation) => {
+      const application = getConversationCatalogApplication(conversation);
+      if (application && !createdApplications.has(application.id)) {
+        createdApplications.set(application.id, application);
+      }
+    });
+  return applicationCatalog
+    .filter((application) => createdApplications.has(application.id))
+    .map((application) => createdApplications.get(application.id) ?? application);
 }
 
 function NavigationConversationIcon({ conversation, size }: { conversation: Conversation; size: number }) {
@@ -1349,24 +1360,31 @@ function ConversationWorkspace({
     if (isUnsentConversationDraft(activeConversation)) setProjectWorkspaceTool(null);
   }, [activeConversation]);
   const activeAgent = agents.find((agent) => agent.id === activeConversation.agentId) ?? agents[0];
-  const activeProjectCatalogApplications = getProjectCatalogApplications(activeProject);
+  const createdDigitalEmployeeById = new Map(
+    getCreatedDigitalEmployees(conversations).map((application) => [application.id, application]),
+  );
+  const withCreatedDigitalEmployeeName = (application: CatalogApplication) => (
+    createdDigitalEmployeeById.get(application.id) ?? application
+  );
+  const activeProjectCatalogApplications = getProjectCatalogApplications(activeProject)
+    .map(withCreatedDigitalEmployeeName);
   const activeProjectAdministratorApplication = activeProjectCatalogApplications.find(
     (application) => application.id === activeProject.administratorApplicationId,
   ) ?? activeProjectCatalogApplications[0];
   const selectableCatalogApplications = isStandaloneConversation
-    ? applicationCatalog
+    ? applicationCatalog.map(withCreatedDigitalEmployeeName)
     : activeProjectCatalogApplications;
   const activePendingConversationTarget = pendingConversationTarget?.conversationId === activeConversationId
     ? pendingConversationTarget
     : null;
   const pendingTargetApplication = activePendingConversationTarget?.type === "application"
-    ? applicationCatalog.find((application) => application.id === activePendingConversationTarget.targetId)
+    ? selectableCatalogApplications.find((application) => application.id === activePendingConversationTarget.targetId)
     : undefined;
   const pendingTargetProject = activePendingConversationTarget?.type === "project"
     ? projectList.find((project) => project.id === activePendingConversationTarget.targetId)
     : undefined;
   const pendingTargetProjectApplications = pendingTargetProject
-    ? getProjectCatalogApplications(pendingTargetProject)
+    ? getProjectCatalogApplications(pendingTargetProject).map(withCreatedDigitalEmployeeName)
     : [];
   const pendingTargetProjectAdministrator = pendingTargetProjectApplications.find(
     (application) => application.id === pendingTargetProject?.administratorApplicationId,
@@ -1380,7 +1398,7 @@ function ConversationWorkspace({
       ?? activeProjectCatalogApplications[0]?.id
       ?? null;
   const activeStandaloneApplication = isStandaloneConversation
-    ? applicationCatalog.find((application) => application.id === activeCatalogApplicationId)
+    ? getConversationCatalogApplication(activeConversation)
     : undefined;
   const activeStandaloneApplicationName = activeStandaloneApplication?.name ?? "";
   const activeStandaloneApplicationConversations = activeStandaloneApplication
@@ -1603,9 +1621,18 @@ function ConversationWorkspace({
         [conversationId]: { ...taskIdentity, status: "running", updatedAt: Date.now() },
       }));
       let accumulatedMessages = [...baseMessages];
+      const runMessageIds = new Set<string>();
       const participantResponders = new Map(
         taskParticipants.map((participant, index) => [participant.applicationId, responders[index]]),
       );
+      const removeEmptyRunMessages = () => {
+        const nextMessages = accumulatedMessages.filter((message) => (
+          !runMessageIds.has(message.id) || getStoredMessageText(message).trim().length > 0
+        ));
+        if (nextMessages.length === accumulatedMessages.length) return;
+        accumulatedMessages = nextMessages;
+        updateConversationMessages(conversationId, () => accumulatedMessages);
+      };
 
       const updateRuntimeTask = (event: RuntimeEvent) => {
         if (cancelledConversationRunsRef.current.has(conversationId)) return;
@@ -1647,6 +1674,7 @@ function ConversationWorkspace({
 
         if (event.type === "message.started") {
           const responder = participantResponders.get(event.participantId);
+          runMessageIds.add(event.messageId);
           if (!accumulatedMessages.some((message) => message.id === event.messageId)) {
             accumulatedMessages = [
               ...accumulatedMessages,
@@ -1684,6 +1712,7 @@ function ConversationWorkspace({
         }
 
         if (event.type === "run.failed") {
+          removeEmptyRunMessages();
           setConversationTasks((current) => ({
             ...current,
             [conversationId]: {
@@ -1717,6 +1746,7 @@ function ConversationWorkspace({
         }
 
         if (event.type === "run.cancelled") {
+          removeEmptyRunMessages();
           setConversationTasks((current) => {
             const next = { ...current };
             delete next[conversationId];
@@ -1753,6 +1783,7 @@ function ConversationWorkspace({
         );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
+          removeEmptyRunMessages();
           if (taskControllersRef.current.get(conversationId) === controller) {
             setConversationTasks((current) => {
               const next = { ...current };
@@ -1886,7 +1917,7 @@ function ConversationWorkspace({
       const fallbackApplication = pendingTargetApplication
         ?? pendingTargetProjectAdministrator
         ?? (isStandaloneConversation
-          ? applicationCatalog.find((application) => application.id === activeCatalogApplicationId)
+          ? activeStandaloneApplication
           : activeProjectAdministratorApplication);
       return mentionedApplications.length
         ? mentionedApplications.map((application) => ({
@@ -1908,6 +1939,7 @@ function ConversationWorkspace({
       activeConversation.applicationId,
       activeProjectAdministratorApplication,
       activeProjectCatalogApplications,
+      activeStandaloneApplication,
       isStandaloneConversation,
       pendingTargetApplication,
       pendingTargetProject,
@@ -2098,8 +2130,13 @@ function ConversationWorkspace({
     messages: activeConversation.messages,
     isRunning: activeTask?.status === "running",
     convertMessage: (item) => item,
-    setMessages: (items) =>
-      updateConversationMessages(activeConversation.id, () => [...items] as DemoMessage[]),
+    setMessages: (items) => {
+      // Streaming events own the message list while a run is active. Ignoring
+      // external-store snapshots here prevents an older render from replacing
+      // newer deltas and making the response visibly jump backwards.
+      if (taskControllersRef.current.has(activeConversation.id)) return;
+      updateConversationMessages(activeConversation.id, () => [...items] as DemoMessage[]);
+    },
     onNew: handleNewMessage,
     onEdit: handleEdit,
     onReload: handleReload,
@@ -2258,6 +2295,7 @@ function ConversationWorkspace({
   const createStandaloneConversation = (
     applicationId: ApplicationId | null = null,
     catalogApplicationId: string | null = null,
+    applicationAlias: string | null = null,
   ) => {
     const conversation: Conversation = {
       id: `conversation-${Date.now()}`,
@@ -2265,6 +2303,7 @@ function ConversationWorkspace({
       agentId: agents[0].id,
       applicationId,
       catalogApplicationId,
+      applicationAlias,
       title: "新对话",
       updatedAt: "刚刚",
       messages: [],
@@ -2276,9 +2315,9 @@ function ConversationWorkspace({
     onMobileNavigationChange(false);
   };
 
-  const launchStandaloneApplication = (application: CatalogApplication) => {
-    createStandaloneConversation(application.contextId, application.id);
-    antMessage.success(`${application.name}已创建`);
+  const launchStandaloneApplication = (application: CatalogApplication, alias: string) => {
+    createStandaloneConversation(application.contextId, application.id, alias);
+    antMessage.success(`${alias}已创建`);
   };
 
   const selectCatalogApplication = (catalogApplicationId: string) => {
@@ -2288,7 +2327,7 @@ function ConversationWorkspace({
 
     if (activeConversation.messages.length > 0) {
       if (isStandaloneConversation) {
-        createStandaloneConversation(application.contextId, application.id);
+        createStandaloneConversation(application.contextId, application.id, application.name);
       } else {
         createProjectConversation(
           activeProject.id,
@@ -2305,7 +2344,12 @@ function ConversationWorkspace({
     setConversations((current) =>
       current.map((conversation) =>
         conversation.id === activeConversation.id
-          ? { ...conversation, applicationId: application.contextId, catalogApplicationId }
+          ? {
+              ...conversation,
+              applicationId: application.contextId,
+              catalogApplicationId,
+              applicationAlias: application.name,
+            }
           : conversation,
       ),
     );
@@ -2338,10 +2382,51 @@ function ConversationWorkspace({
       (item) => item.id === catalogApplicationId,
     );
     if (!application) return;
-    launchStandaloneApplication(application);
+    launchStandaloneApplication(application, application.name);
   };
 
   const renameConversation = (conversation: Conversation) => {
+    const standaloneApplication = conversation.projectId === null
+      ? getConversationCatalogApplication(conversation)
+      : undefined;
+    const standaloneApplicationTemplate = conversation.projectId === null
+      ? getConversationCatalogTemplate(conversation)
+      : undefined;
+    if (standaloneApplication && standaloneApplicationTemplate) {
+      let nextName = standaloneApplication.name;
+      modal.confirm({
+        title: "重命名数字员工",
+        content: (
+          <Input
+            autoFocus
+            defaultValue={standaloneApplication.name}
+            maxLength={30}
+            showCount
+            aria-label="数字员工名称"
+            onChange={(event) => {
+              nextName = event.target.value.trim();
+            }}
+          />
+        ),
+        okText: "保存",
+        cancelText: "取消",
+        onOk: () => {
+          if (!nextName) {
+            antMessage.warning("请输入数字员工名称");
+            return Promise.reject();
+          }
+          setConversations((current) => current.map((item) => (
+            item.projectId === null
+            && getConversationCatalogTemplate(item)?.id === standaloneApplicationTemplate.id
+              ? { ...item, applicationAlias: nextName }
+              : item
+          )));
+          antMessage.success("数字员工名称已更新");
+        },
+      });
+      return;
+    }
+
     let nextTitle = conversation.title;
     modal.confirm({
       title: "重命名对话",
@@ -2448,35 +2533,33 @@ function ConversationWorkspace({
     });
   };
 
-  const deleteConversation = (conversation: Conversation) => {
-    modal.confirm({
-      title: "删除对话记录？",
-      content: `将删除“${conversation.title}”及其本地演示消息，此操作不可撤销。`,
-      okText: "删除",
-      okButtonProps: { danger: true },
-      cancelText: "取消",
-      onOk: () => {
-        const standaloneFallback = standaloneConversations.find((item) => item.id !== conversation.id);
-        taskControllersRef.current.get(conversation.id)?.abort();
-        taskControllersRef.current.delete(conversation.id);
-        setConversationTasks((current) => {
-          const next = { ...current };
-          delete next[conversation.id];
-          return next;
-        });
-        setConversations((current) => {
-          const remaining = current.filter((item) => item.id !== conversation.id);
-          if (conversation.id === activeConversationId) {
-            navigateTo(
-              conversation.projectId === null && standaloneFallback
-                ? `/conversations/${standaloneFallback.id}`
-                : `/projects/${conversation.projectId ?? projectList[0].id}`,
-            );
-          }
-          return remaining;
-        });
-      },
-    });
+  const removeConversationFromList = (conversation: Conversation) => {
+    const standaloneApplicationId = conversation.projectId === null
+      ? getConversationCatalogApplication(conversation)?.id
+      : null;
+    const removedConversationIds = new Set(
+      conversations
+        .filter((item) => item.id === conversation.id || (
+          standaloneApplicationId
+          && item.projectId === null
+          && getConversationCatalogApplication(item)?.id === standaloneApplicationId
+        ))
+        .map((item) => item.id),
+    );
+    const remaining = conversations.filter((item) => !removedConversationIds.has(item.id));
+    if (removedConversationIds.has(activeConversationId)) {
+      const fallback = remaining.find((item) => item.projectId === conversation.projectId);
+      navigateTo(fallback
+        ? fallback.projectId === null
+          ? `/conversations/${fallback.id}`
+          : `/projects/${fallback.projectId}/conversations/${fallback.id}`
+        : conversation.projectId === null
+          ? "/apps"
+          : `/projects/${conversation.projectId}`);
+    }
+    setConversations(remaining);
+    const label = getConversationCatalogApplication(conversation)?.name ?? conversation.title;
+    antMessage.success(`已从列表中移除“${label}”`);
   };
 
   const beforeUpload: UploadProps["beforeUpload"] = (file) => {
@@ -2500,7 +2583,7 @@ function ConversationWorkspace({
       projects={projectList}
       onCreateProject={createProject}
       onCreateStandaloneConversation={createStandaloneConversation}
-      onDelete={deleteConversation}
+      onDelete={removeConversationFromList}
       onDarkModeChange={onDarkModeChange}
       onApplicationsOpen={openApplications}
       onArchiveOpen={openArchive}
@@ -2585,7 +2668,7 @@ function ConversationWorkspace({
                     conversations={projectConversationHistory}
                     activeConversationId={projectConversationHistory[0]?.id ?? ""}
                     onCreate={() => createProjectConversation(activeProject.id)}
-                    onDelete={deleteConversation}
+                    onDelete={removeConversationFromList}
                     onRename={renameConversation}
                     onSelect={switchConversation}
                   />
@@ -2612,7 +2695,7 @@ function ConversationWorkspace({
                     onDraftFileRemove={(file) =>
                       setSelectedFiles((current) => current.filter((item) => item.uid !== file.uid))
                     }
-                    onDeleteConversation={deleteConversation}
+                    onDeleteConversation={removeConversationFromList}
                     onOpenConversation={switchConversation}
                     onOpenFile={(fileId) => {
                       setProjectFileToOpenId(fileId);
@@ -2697,8 +2780,9 @@ function ConversationWorkspace({
                       onCreate={() => createStandaloneConversation(
                         activeStandaloneApplication.contextId,
                         activeStandaloneApplication.id,
+                        activeConversation.applicationAlias ?? activeStandaloneApplication.name,
                       )}
-                      onDelete={deleteConversation}
+                      onDelete={removeConversationFromList}
                       onRename={renameConversation}
                       onSelect={switchConversation}
                     />
@@ -2708,7 +2792,7 @@ function ConversationWorkspace({
                       conversations={projectConversationHistory}
                       activeConversationId={activeConversationId}
                       onCreate={() => createProjectConversation(activeProject.id)}
-                      onDelete={deleteConversation}
+                      onDelete={removeConversationFromList}
                       onRename={renameConversation}
                       onSelect={switchConversation}
                     />
@@ -2882,7 +2966,13 @@ function ConversationWorkspace({
                       project={pendingTargetProject ?? (isStandaloneConversation ? null : activeProject)}
                       projectApplications={pendingTargetProject
                         ? pendingTargetProjectApplications
-                        : selectableCatalogApplications}
+                        : isStandaloneConversation && activeStandaloneApplication
+                          ? selectableCatalogApplications.map((application) => (
+                              application.id === activeStandaloneApplication.id
+                                ? activeStandaloneApplication
+                                : application
+                            ))
+                          : selectableCatalogApplications}
                       availableApplications={getCreatedDigitalEmployees(conversations)}
                       availableProjects={projectList}
                       enableApplicationMentions={Boolean(pendingTargetProject) || !isStandaloneConversation}
@@ -2939,6 +3029,7 @@ function ConversationWorkspace({
                           antMessage.success("名称修改成功");
                         }
                       : undefined}
+                    onArchiveProject={!isStandaloneConversation ? archiveProject : undefined}
                     onActiveToolChange={setProjectWorkspaceTool}
                     onOpenConversation={(conversationId) => {
                       setProjectWorkspaceTool(null);
@@ -3488,10 +3579,12 @@ function ApplicationHoverCard({
         alt=""
         aria-hidden="true"
       />
-      <Badge className="application-hover-card-status" status="success" text="在线" />
       <div className="application-hover-card-identity">
         <img src={application.avatar} alt="" aria-hidden="true" />
-        <strong>{application.name}</strong>
+        <div className="application-hover-card-name-stack">
+          <strong>{application.name}</strong>
+          {application.originalName ? <span>{application.originalName}</span> : null}
+        </div>
       </div>
       <div className="application-hover-card-details">
         <p className="application-hover-card-description">{application.description}</p>
@@ -3523,10 +3616,14 @@ function ApplicationProfileSummary({
         <span title={application.id}>ID: {application.id}</span>
       </div>
       <div className="application-profile-identity">
-        <h3>{application.name}</h3>
+        <div className="application-profile-name-row">
+          <h3>{application.name}</h3>
+          {application.originalName ? (
+            <span className="application-profile-original-name">{application.originalName}</span>
+          ) : null}
+        </div>
         {showMeta ? (
           <div className="application-profile-meta">
-            <span className="application-profile-online"><i aria-hidden="true" />在线</span>
             <span>启用时间：2026年9月24日</span>
           </div>
         ) : null}
@@ -3684,7 +3781,7 @@ function ConversationHistoryPanel({
                   items: conversationMoreMenuItems,
                   onClick: ({ key }) => {
                     if (key === "rename") onRename(conversation);
-                    if (key === "delete") onDelete(conversation);
+                    if (key === "remove") onDelete(conversation);
                   },
                 }}
               >
@@ -4050,6 +4147,7 @@ function ProjectWorkspaceRail({
   skillInstallations,
   runStageSelection,
   onProjectNameChange,
+  onArchiveProject,
   onActiveToolChange,
   onInstallSkill,
   onOpenConversation,
@@ -4068,6 +4166,7 @@ function ProjectWorkspaceRail({
   skillInstallations: SkillInstallation[];
   runStageSelection?: RunStageSelection | null;
   onProjectNameChange?: (projectId: string, name: string) => void;
+  onArchiveProject?: (project: Project) => void;
   onActiveToolChange: (tool: ProjectWorkspaceTool | null) => void;
   onInstallSkill: (
     skill: SkillDefinition,
@@ -4495,7 +4594,6 @@ function ProjectWorkspaceRail({
                 <section className="application-profile-section">
                   <div className="application-profile-section-heading">
                     <h4>Skill技能</h4>
-                    <span>{profileSkills.length} 项已安装</span>
                   </div>
                   {profileSkills.length ? (
                     <div className="application-profile-skills">
@@ -4621,27 +4719,49 @@ function ProjectWorkspaceRail({
               </div>
               <div className="project-settings-people" aria-label="数字员工列表">
                 {applications.map((application) => (
-                  <div className="project-settings-person" key={application.id}>
-                    <Tooltip title={application.name}>
+                  <Popover
+                    content={(
+                      <ApplicationHoverCard
+                        application={application}
+                        skillInstallations={skillInstallations}
+                      />
+                    )}
+                    key={application.id}
+                    mouseEnterDelay={0.15}
+                    placement="left"
+                    rootClassName="application-hover-popover project-settings-application-profile-popover"
+                    trigger={["hover", "focus"]}
+                  >
+                    <div
+                      className="project-settings-person is-profile-trigger"
+                      aria-label={`${application.name}，查看数字员工资料`}
+                      tabIndex={0}
+                    >
                       <span className="project-settings-avatar-trigger">
                         <Avatar className="application-avatar-surface" size={24} src={application.avatar} />
                       </span>
-                    </Tooltip>
-                    <span className="project-settings-person-name" title={application.name}>{application.name}</span>
-                  </div>
+                      <span className="project-settings-person-name" title={application.name}>{application.name}</span>
+                    </div>
+                  </Popover>
                 ))}
               </div>
             </div>
 
             <Divider />
 
-            <div className="project-settings-danger">
+            <div className="project-settings-archive">
               <div>
-                <strong>删除群组项目</strong>
-                <span>删除后不可找回，群组项目成员也将无法继续访问</span>
+                <strong>归档群组项目</strong>
+                <span>归档后将移至归档，群组项目及历史对话仍可恢复</span>
               </div>
-              <Tooltip title="删除群组项目（演示）">
-                <Button danger icon={<Trash2 size={16} />} aria-label="删除群组项目（演示）" />
+              <Tooltip title="归档群组项目">
+                <Button
+                  icon={<Archive size={16} />}
+                  aria-label="归档群组项目"
+                  onClick={() => {
+                    if (project) onArchiveProject?.(project);
+                  }}
+                />
               </Tooltip>
             </div>
             </>
@@ -5668,10 +5788,29 @@ function CreateDigitalEmployeeModal({
 }: {
   application: CatalogApplication | null;
   onCancel: () => void;
-  onCreate: (application: CatalogApplication) => void;
+  onCreate: (application: CatalogApplication, alias: string) => void;
 }) {
   const aliasInputRef = useRef<InputRef>(null);
+  const [alias, setAlias] = useState("");
+  const [aliasError, setAliasError] = useState("");
+
+  useEffect(() => {
+    setAlias("");
+    setAliasError("");
+  }, [application?.id]);
+
   if (!application) return null;
+
+  const createDigitalEmployee = () => {
+    const normalizedAlias = alias.trim();
+    if (!normalizedAlias) {
+      setAliasError("请输入数字员工名称");
+      aliasInputRef.current?.focus();
+      return;
+    }
+    onCancel();
+    onCreate(application, normalizedAlias);
+  };
 
   return (
     <Modal
@@ -5728,25 +5867,39 @@ function CreateDigitalEmployeeModal({
           </div>
         </div>
 
-        <label className="create-digital-employee-alias">
-          <span>称呼：</span>
-          <Input
-            variant="borderless"
-            aria-label="数字员工称呼"
-            placeholder="请输入称呼"
-            autoFocus
-            ref={aliasInputRef}
-          />
-        </label>
+        <div className="create-digital-employee-alias-field">
+          <label className={`create-digital-employee-alias${aliasError ? " is-error" : ""}`}>
+            <span>名称<span className="create-digital-employee-required" aria-hidden="true">*</span>：</span>
+            <Input
+              variant="borderless"
+              aria-label="数字员工名称"
+              aria-invalid={Boolean(aliasError)}
+              aria-describedby={aliasError ? "create-digital-employee-alias-error" : undefined}
+              placeholder="请输入数字员工名称"
+              autoFocus
+              maxLength={30}
+              ref={aliasInputRef}
+              required
+              value={alias}
+              onChange={(event) => {
+                setAlias(event.target.value);
+                if (aliasError) setAliasError("");
+              }}
+              onPressEnter={createDigitalEmployee}
+            />
+          </label>
+          {aliasError ? (
+            <span className="create-digital-employee-alias-error" id="create-digital-employee-alias-error" role="alert">
+              {aliasError}
+            </span>
+          ) : null}
+        </div>
 
         <Button
           className="create-digital-employee-submit"
           type="primary"
           block
-          onClick={() => {
-            onCancel();
-            onCreate(application);
-          }}
+          onClick={createDigitalEmployee}
         >
           创建数字员工
         </Button>
@@ -5845,12 +5998,12 @@ function ArchiveHome({
                   drift={0.5}
                   onFolderClick={() => onProjectOpen(project.id)}
                   onSelect={(value, index) => console.log(value, index)}
-                  folderColor="#3f3f46"
-                  frontColor="#52525b"
-                  paperColor="#f5f5f5"
-                  itemColor="#f5f5f5"
-                  itemTextColor="#18181b"
-                  labelColor="#f5f5f5"
+                  folderColor="#c7c7cc"
+                  frontColor="#e5e5e7"
+                  paperColor="#f7f7f8"
+                  itemColor="#f7f7f8"
+                  itemTextColor="#27272a"
+                  labelColor="#27272a"
                   width={200}
                   height={148}
                   radius={14}
@@ -6085,21 +6238,7 @@ function OverviewHome({
         </div>
       </header>
 
-      <section className="overview-summary" aria-labelledby="overview-summary-title">
-        <header>
-          <span id="overview-summary-title" className="font-strong">工作记录</span>
-          <Select
-            className="overview-period-select"
-            value={period}
-            aria-label="统计数据周期"
-            options={[
-              { label: "最近 7 天", value: "week" },
-              { label: "最近一个月", value: "month" },
-              { label: "全部时间", value: "all" },
-            ]}
-            onChange={setPeriod}
-          />
-        </header>
+      <section className="overview-summary" aria-label="工作记录">
         <div className="overview-metrics">
           {[
             { filter: "all" as const, label: "任务总数", value: periodRows.length, icon: <MessagesSquare size={20} />, note: "数字员工的全部工作记录" },
@@ -6283,7 +6422,7 @@ function ApplicationsHome({
   skillInstallations,
 }: {
   conversations: Conversation[];
-  onLaunch: (application: CatalogApplication) => void;
+  onLaunch: (application: CatalogApplication, alias: string) => void;
   onOpenConversation: (conversationId: string) => void;
   onInstallSkill: (
     skill: SkillDefinition,
@@ -7774,7 +7913,7 @@ function ProjectHome({
                         items: conversationMoreMenuItems,
                         onClick: ({ key }) => {
                           if (key === "rename") onRenameConversation(conversation);
-                          if (key === "delete") onDeleteConversation(conversation);
+                          if (key === "remove") onDeleteConversation(conversation);
                         },
                       }}
                     >
@@ -8560,6 +8699,10 @@ function ConversationNavigation({
     const { group } = item;
     const conversation = group.conversations[0];
     const label = group.application ? group.application.name : conversation.title;
+    const originalApplicationName = getConversationCatalogTemplate(conversation)?.name;
+    const secondaryLabel = conversation.applicationAlias?.trim() && originalApplicationName
+      ? originalApplicationName
+      : conversation.title;
     const groupActive = isStandaloneConversation
       && group.conversations.some((groupConversation) => groupConversation.id === activeConversationId);
     const groupConversationIds = new Set(group.conversations.map((groupConversation) => groupConversation.id));
@@ -8582,7 +8725,7 @@ function ConversationNavigation({
           <span className="navigation-content-copy">
             <span className="navigation-content-label">{label}</span>
             {group.application ? (
-              <span className="navigation-content-latest" title={conversation.title}>{conversation.title}</span>
+              <span className="navigation-content-latest" title={secondaryLabel}>{secondaryLabel}</span>
             ) : null}
           </span>
           <small className="navigation-time">{formatNavigationUpdatedAt(conversation.updatedAt)}</small>
@@ -8597,7 +8740,7 @@ function ConversationNavigation({
             onClick: ({ key }) => {
               if (key === "pin") toggleNavigationPin(item.key, label);
               if (key === "rename") onRename(conversation);
-              if (key === "delete") onDelete(conversation);
+              if (key === "remove") onDelete(conversation);
             },
           }}
         >
@@ -8978,6 +9121,10 @@ function ConversationNavigation({
               const label = group.application
                 ? group.application.name
                 : conversation.title;
+              const originalApplicationName = getConversationCatalogTemplate(conversation)?.name;
+              const secondaryLabel = conversation.applicationAlias?.trim() && originalApplicationName
+                ? originalApplicationName
+                : conversation.title;
               const groupActive = isStandaloneConversation
                 && group.conversations.some((groupConversation) => groupConversation.id === activeConversationId);
               const groupConversationIds = new Set(group.conversations.map((groupConversation) => groupConversation.id));
@@ -9003,7 +9150,7 @@ function ConversationNavigation({
                     <span className="navigation-content-copy">
                       <span className="navigation-content-label">{label}</span>
                       {group.application ? (
-                        <span className="navigation-content-latest" title={conversation.title}>{conversation.title}</span>
+                        <span className="navigation-content-latest" title={secondaryLabel}>{secondaryLabel}</span>
                       ) : null}
                     </span>
                     <small className="navigation-time">{formatNavigationUpdatedAt(conversation.updatedAt)}</small>
@@ -9018,7 +9165,7 @@ function ConversationNavigation({
                       onClick: ({ key }) => {
                         if (key === "pin") toggleNavigationPin(item.key, label);
                         if (key === "rename") onRename(conversation);
-                        if (key === "delete") onDelete(conversation);
+                        if (key === "remove") onDelete(conversation);
                       },
                     }}
                   >
@@ -9470,6 +9617,7 @@ function ThreadView({
                 ? <UserMessage />
                 : <AssistantMessage
                     application={selectedCatalogApplication}
+                    applications={projectApplications}
                     administratorApplicationId={administratorApplicationId}
                     enableApplicationMention={enableApplicationMentions}
                     fallbackName={activeAgentName}
@@ -9758,34 +9906,135 @@ function UserMessage() {
   );
 }
 
+function AssistantThinkingIndicator() {
+  const reduceMotion = useReducedMotion();
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [expanded, setExpanded] = useState(false);
+  const detailsId = useId();
+  const activeStepIndex = elapsedSeconds < 0.6 ? 0 : elapsedSeconds < 1.2 ? 1 : 2;
+  const steps = ["理解问题", "整理对话上下文", "生成回复"];
+
+  useEffect(() => {
+    const startedAt = performance.now();
+    const intervalId = window.setInterval(() => {
+      setElapsedSeconds((performance.now() - startedAt) / 1000);
+    }, 100);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  return (
+    <motion.div
+      className="assistant-thinking"
+      initial={reduceMotion ? false : { opacity: 0, y: 4, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
+    >
+      <span className="assistant-thinking-announcement" role="status" aria-live="polite">
+        正在生成回复
+      </span>
+      <button
+        className="assistant-thinking-trigger"
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={detailsId}
+        aria-label={`思考中，${expanded ? "收起" : "展开"}思考过程`}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <span className="assistant-thinking-glyph" aria-hidden="true">
+          <Sparkles size={14} strokeWidth={1.8} />
+        </span>
+        <span className="assistant-thinking-label">思考中</span>
+        <span className="assistant-thinking-dots" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </span>
+        <span className="assistant-thinking-timer" aria-hidden="true">
+          {elapsedSeconds.toFixed(1)}s
+        </span>
+        <ChevronDown className="assistant-thinking-chevron" size={14} aria-hidden="true" />
+      </button>
+      <AnimatePresence initial={false}>
+        {expanded ? (
+          <motion.ol
+            className="assistant-thinking-steps"
+            id={detailsId}
+            initial={reduceMotion ? false : { height: 0, opacity: 0, y: -4 }}
+            animate={{ height: "auto", opacity: 1, y: 0 }}
+            exit={reduceMotion ? undefined : { height: 0, opacity: 0, y: -3 }}
+            transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.2, 0, 0, 1] }}
+          >
+            {steps.map((step, index) => (
+              <motion.li
+                className={index < activeStepIndex ? "is-complete" : index === activeStepIndex ? "is-active" : ""}
+                key={step}
+                initial={reduceMotion ? false : { opacity: 0, x: -4 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: reduceMotion ? 0 : 0.16, delay: reduceMotion ? 0 : index * 0.025 }}
+              >
+                <span className="assistant-thinking-step-marker" aria-hidden="true">
+                  {index < activeStepIndex ? <Check size={10} strokeWidth={2.4} /> : null}
+                </span>
+                <span>{step}</span>
+              </motion.li>
+            ))}
+          </motion.ol>
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
 function AssistantMessage({
   application,
+  applications,
   administratorApplicationId,
   enableApplicationMention,
   fallbackName,
   onApplicationMention,
 }: {
   application?: CatalogApplication;
+  applications?: CatalogApplication[];
   administratorApplicationId?: string | null;
   enableApplicationMention: boolean;
   fallbackName: string;
   onApplicationMention: (application: CatalogApplication) => void;
 }) {
   const messageId = useAuiState((state) => state.message.id);
+  const isStreaming = useAuiState((state) => (
+    state.thread.isRunning
+    && state.message.role === "assistant"
+    && state.message.isLast
+  ));
+  const isThinking = useAuiState((state) => (
+    state.thread.isRunning
+    && state.message.role === "assistant"
+    && state.message.isLast
+    && state.message.content.every((part) => part.type !== "text" || part.text.trim().length === 0)
+  ));
   const messageCatalogApplicationId = useAuiState((state) => {
     if (state.message.role !== "assistant") return undefined;
     const value = state.message.metadata.custom?.catalogApplicationId;
     return typeof value === "string" ? value : undefined;
   });
-  const messageApplication = applicationCatalog.find(
+  const catalogMessageApplication = applicationCatalog.find(
     (catalogApplication) => catalogApplication.id === messageCatalogApplicationId,
-  ) ?? application;
+  );
+  const messageApplication = applications?.find(
+    (candidate) => candidate.id === messageCatalogApplicationId,
+  ) ?? (application?.id === messageCatalogApplicationId
+    ? application
+    : catalogMessageApplication ?? application);
   const displayName = messageApplication?.name ?? fallbackName;
   const isAdministrator = Boolean(
     administratorApplicationId && messageApplication?.id === administratorApplicationId,
   );
   return (
-    <MessagePrimitive.Root className="message-row assistant-message-row" data-message-id={messageId}>
+    <MessagePrimitive.Root
+      className={`message-row assistant-message-row${isStreaming ? " is-streaming" : ""}`}
+      data-message-id={messageId}
+    >
       <Avatar
         className="message-avatar application-avatar-surface"
         size={24}
@@ -9810,10 +10059,14 @@ function AssistantMessage({
             <Tag className="message-administrator-tag" color="blue" variant="filled">管理员</Tag>
           ) : null}
         </div>
-        <div className="message-surface assistant-message-surface">
-          <MessagePrimitive.Parts>
-            {({ part }) => part.type === "text" ? <MessagePartPrimitive.Text /> : null}
-          </MessagePrimitive.Parts>
+        <div className={`message-surface assistant-message-surface${isThinking ? " is-thinking" : ""}${isStreaming ? " is-streaming" : ""}`}>
+          {isThinking ? (
+            <AssistantThinkingIndicator />
+          ) : (
+            <MessagePrimitive.Parts>
+              {({ part }) => part.type === "text" ? <MessagePartPrimitive.Text /> : null}
+            </MessagePrimitive.Parts>
+          )}
         </div>
         <ActionBarPrimitive.Root className="message-actions" data-floating hideWhenRunning autohide="never">
           <Tooltip title="复制">
@@ -10274,7 +10527,7 @@ function Composer({
   const mentionApplications = enableApplicationMentions
     ? (projectApplications ?? []).filter((application) => (
         !mentionQuery
-        || `${application.name} ${application.category} ${application.description}`
+        || `${application.name} ${application.originalName ?? ""} ${application.category} ${application.description}`
           .toLocaleLowerCase()
           .includes(mentionQuery.toLocaleLowerCase())
     ))
@@ -10508,7 +10761,7 @@ function Composer({
               <img src={application.avatar} alt="" />
               <span>
                 <span>{application.name}</span>
-                <small>{application.category}</small>
+                <small>{application.originalName ?? application.category}</small>
               </span>
             </button>
           )) : (
