@@ -34,7 +34,6 @@ import {
   Segmented,
   Select,
   Space,
-  Switch,
   Table,
   Tabs,
   Tag,
@@ -86,7 +85,6 @@ import {
   LayoutGrid,
   List,
   Languages,
-  Link2Off,
   LoaderCircle,
   ListChecks,
   Menu,
@@ -117,7 +115,6 @@ import {
   ShieldAlert,
   Share2,
   Sparkles,
-  Split,
   Square,
   Star,
   Store,
@@ -158,7 +155,7 @@ import { createTheme } from "./theme";
 const { Content } = Layout;
 const { Text, Title } = Typography;
 
-type ProjectWorkspaceTool = "connections" | "files" | "runs" | "schedules" | "settings" | "skills";
+type ProjectWorkspaceTool = "files" | "runs" | "schedules" | "settings" | "skills";
 type PendingConversationTarget = {
   conversationId: string;
   type: "application" | "project";
@@ -322,11 +319,6 @@ function shouldShowNavigationTask(
     && viewedTaskVersions[task.conversationId] !== task.updatedAt;
 }
 
-const officePlatformCatalog = [
-  { id: "feishu", name: "飞书", shortName: "飞", color: "var(--ui-color-feishu)", description: "通过飞书机器人接收并回复用户消息" },
-  { id: "wechat-work", name: "企业微信", shortName: "微", color: "var(--ui-color-wecom)", description: "通过企业微信机器人接收并回复用户消息" },
-  { id: "dingtalk", name: "钉钉", shortName: "钉", color: "var(--ui-color-blue-6)", description: "通过钉钉机器人接收并回复用户消息" },
-] as const;
 
 const conversationHistoryMenuItems: MenuProps["items"] = [
   { key: "rename", icon: <Pencil size={14} />, label: "重命名" },
@@ -4725,8 +4717,6 @@ function ProjectWorkspaceRail({
   const [runResultExpanded, setRunResultExpanded] = useState(true);
   const [manualScheduleModalOpen, setManualScheduleModalOpen] = useState(false);
   const [manualScheduledTasks, setManualScheduledTasks] = useState<ProjectScheduledTask[]>([]);
-  const [connectedOfficePlatforms, setConnectedOfficePlatforms] = useState<Set<string>>(() => new Set());
-  const [enabledOfficePlatforms, setEnabledOfficePlatforms] = useState<Set<string>>(() => new Set());
   const resizeStateRef = useRef({ startX: 0, startWidth: 420 });
 
   useEffect(() => {
@@ -4851,7 +4841,6 @@ function ProjectWorkspaceRail({
     { key: "settings", label: "设置", icon: <Settings size={17} /> },
     { key: "files", label: isStandalone ? "文件" : "群组项目文件", icon: <HardDrive size={17} /> },
     { key: "skills", label: "Skill技能", icon: <Pickaxe size={17} /> },
-    ...(isStandalone ? [{ key: "connections" as const, label: "IM连接", icon: <Split size={17} /> }] : []),
     { key: "schedules", label: "定时任务", icon: <Timer size={17} /> },
     { key: "runs", label: "运行记录", icon: <MonitorSmartphone size={17} /> },
   ];
@@ -4874,89 +4863,6 @@ function ProjectWorkspaceRail({
   };
 
   const renderPanelContent = (tool: ProjectWorkspaceTool | null) => {
-    if (tool === "connections" && isStandalone) {
-      return (
-        <WorkspaceDemoPanel title="IM 连接管理" onClose={() => onActiveToolChange(null)}>
-          <div className="office-platform-panel">
-            <span>接入即时通讯工具，为不同聊天指派数字员工自动响应</span>
-            <div className="office-platform-list" aria-label="来自连接器市场">
-              {officePlatformCatalog.map((platform) => {
-                const connected = connectedOfficePlatforms.has(platform.id);
-                return (
-                  <article className="office-platform-card" key={platform.id}>
-                    <span
-                      className="office-platform-icon"
-                      style={{ backgroundColor: platform.color }}
-                      aria-hidden="true"
-                    >
-                      {platform.shortName}
-                    </span>
-                    <span className="office-platform-copy">
-                      <span className="office-platform-title-row">
-                        <strong>{platform.name}</strong>
-                        <i aria-hidden="true" />
-                        <em>{connected ? "已连接" : "未连接"}</em>
-                      </span>
-                      <small>{platform.description}</small>
-                    </span>
-                    <span className="office-platform-actions">
-                      {!connected ? (
-                        <Button
-                          className="office-platform-connect"
-                          size="small"
-                          onClick={() => {
-                            setConnectedOfficePlatforms((current) => new Set(current).add(platform.id));
-                            setEnabledOfficePlatforms((current) => new Set(current).add(platform.id));
-                          }}
-                        >
-                          连接
-                        </Button>
-                      ) : null}
-                      {connected ? (
-                        <>
-                          <Tooltip title="解绑">
-                            <Button
-                              className="office-platform-unlink"
-                              type="text"
-                              size="small"
-                              icon={<Link2Off size={16} />}
-                              aria-label={`解绑${platform.name}`}
-                              onClick={() => {
-                                setConnectedOfficePlatforms((current) => {
-                                  const next = new Set(current);
-                                  next.delete(platform.id);
-                                  return next;
-                                });
-                                setEnabledOfficePlatforms((current) => {
-                                  const next = new Set(current);
-                                  next.delete(platform.id);
-                                  return next;
-                                });
-                              }}
-                            />
-                          </Tooltip>
-                          <Switch
-                            size="small"
-                            checked={enabledOfficePlatforms.has(platform.id)}
-                            aria-label={`${platform.name}${enabledOfficePlatforms.has(platform.id) ? "已启用" : "已停用"}`}
-                            onChange={(checked) => setEnabledOfficePlatforms((current) => {
-                              const next = new Set(current);
-                              if (checked) next.add(platform.id);
-                              else next.delete(platform.id);
-                              return next;
-                            })}
-                          />
-                        </>
-                      ) : null}
-                    </span>
-                  </article>
-                );
-              })}
-            </div>
-          </div>
-        </WorkspaceDemoPanel>
-      );
-    }
 
     if (tool === "skills") {
       const normalizedSkillSearch = skillSearch.trim().toLocaleLowerCase();

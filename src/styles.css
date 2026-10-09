@@ -1724,33 +1724,6 @@ button.settings-logout-item:focus-visible > svg { color: currentColor !important
 .application-skills-panel-filters { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .application-skills-panel > .applications-empty { display: flex; min-height: 160px; margin: 0; flex: 1; flex-direction: column; align-items: center; justify-content: center; }
 .project-workspace-demo-body > .ant-empty { display: flex; min-height: 100%; margin: 0; flex-direction: column; align-items: center; justify-content: center; }
-.office-platform-panel { display: flex; flex-direction: column; }
-.office-platform-panel > SPAN { margin: 0; padding:0 0 12px;color: var(--ant-color-text); font-size: 12px; line-height: 20px;  color: var(--ant-color-text-tertiary);}
-.office-platform-list { display: grid;gap: 8px; }
-.office-platform-card {
-  display: grid;
-  min-height: 76px;
-  padding: 12px 0;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-background: var(--ant-color-fill-quaternary);
-border: 1px solid var(--ant-color-border-secondary);
-border-radius: var(--ty-radius-12);
-padding: 16px;
-}
-.office-platform-icon { display: inline-grid; width: 36px; height: 36px; place-items: center; border-radius: var(--ty-radius-10); color: var(--ui-color-white); font-size: 14px; font-weight: 600; }
-.office-platform-copy { display: grid; min-width: 0; gap: 2px; }
-.office-platform-copy strong { color: var(--ant-color-text); font-size: 13px; font-weight: 500; line-height: 20px; }
-.office-platform-copy small { color: var(--ant-color-text-tertiary); font-size: 11px; line-height: 18px; }
-.office-platform-title-row { display: flex; min-width: 0; align-items: center; gap: 6px; }
-.office-platform-title-row > i { width: 5px; height: 5px; flex: 0 0 5px; border-radius: var(--ty-radius-circle); background: var(--ant-color-text-quaternary); }
-.office-platform-title-row > em { color: var(--ant-color-text-tertiary); font-size: 11px; font-style: normal; line-height: 18px; }
-.office-platform-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
-.office-platform-connect.ant-btn { min-width: 52px; padding-inline: 10px; border-radius: var(--ty-radius-6); font-size: 12px; }
-.office-platform-unlink.ant-btn { width: 28px; min-width: 28px; height: 28px; padding: 0; color: var(--ant-color-text-tertiary); }
-.office-platform-unlink.ant-btn:hover,
-.office-platform-unlink.ant-btn:focus-visible { color: var(--ant-color-error); }
 .application-skills-panel-category-shell { position: relative; display: flex; min-width: 0; flex: 1; align-items: center; gap: 6px; overflow: hidden; }
 .application-skills-panel-category-shell > .applications-category-pill { flex: 0 0 auto; }
 .application-skills-panel-category-shell > .ant-dropdown-trigger { flex: 0 0 auto; }

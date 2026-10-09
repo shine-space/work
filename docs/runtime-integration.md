@@ -13,6 +13,11 @@ real-service adapters are available:
 
 ## Responsibilities
 
+The user workspace no longer exposes the IM connection module. Its toolbar entry,
+demo platform catalog, connect/unlink/enable state and panel styles are removed
+from both the primary and public clients. Management-side channels and backend
+connection records are unchanged; this is a user-interface removal, not a data deletion.
+
 - UI owns rendering, optimistic message shells, task-island presentation and
   local cancellation intent.
 - The runtime adapter owns transport, authentication cookies, stream parsing
