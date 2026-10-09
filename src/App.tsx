@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { SharedAccountOverlay } from './SharedAccountOverlay';
 import {
   ActionBarPrimitive,
   AssistantRuntimeProvider,
@@ -8994,6 +8995,8 @@ function ConversationNavigation({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const closeAccountSettings = useCallback(() => setAccountSettingsOpen(false), []);
   const teamOptions = getUserTeams();
   const activeTeamId = getActiveTeam()?.id ?? "";
   const [navigationMode, setNavigationMode] = useState<"daily" | "app-builder">("daily");
@@ -9245,10 +9248,7 @@ function ConversationNavigation({
     : { duration: 0.18, ease: [0.2, 0, 0, 1] as const };
 
   const openAccountSettings = () => {
-    const accountUrl = new URL("/settings/account", applicationStudioUrl);
-    const returnPath = `${getBrowserPath(getWorkspacePathname(window.location.pathname))}${window.location.search}${window.location.hash}`;
-    accountUrl.searchParams.set("return_to", new URL(returnPath, window.location.origin).toString());
-    window.location.assign(accountUrl.toString());
+    setAccountSettingsOpen(true);
   };
 
   const navigationItemNodes = navigationItems.map((item) => {
@@ -9888,6 +9888,7 @@ function ConversationNavigation({
         </>
       )}
 
+      {accountSettingsOpen && <SharedAccountOverlay managementUrl={applicationStudioUrl} onClose={closeAccountSettings} />}
       <Modal
         className="create-project-modal"
         title="创建群组项目"
