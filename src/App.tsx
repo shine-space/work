@@ -6879,7 +6879,7 @@ function ApplicationsHome({
               ),
             };
           })
-        : [{ key: "digital-employee-empty", disabled: true, label: "暂无已创建的数字员工" }],
+        : [{ key: "digital-employee-empty", disabled: true, label: <span className="skill-install-empty">暂无已创建的数字员工</span> }],
     },
     {
       type: "group",
@@ -6901,7 +6901,7 @@ function ApplicationsHome({
               ),
             };
           })
-        : [{ key: "project-empty", disabled: true, label: "暂无群组项目" }],
+        : [{ key: "project-empty", disabled: true, label: <span className="skill-install-empty">暂无群组项目</span> }],
     },
   ];
 

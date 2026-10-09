@@ -2723,6 +2723,7 @@ padding: 16px;
 .skill-install-target-status.is-installed { background: var(--ant-color-fill-secondary); color: var(--ant-color-text-tertiary); }
 .ant-dropdown-menu-item-disabled .skill-install-target-row { opacity: 1; }
 .ant-dropdown-menu-item-disabled .skill-install-target-name { color: var(--ant-color-text-disabled); }
+.skill-install-empty { display: block; width: 100%; color: var(--ant-color-text-quaternary); font-size: 12px; line-height: 24px; text-align: center; }
 .skill-detail-modal .ant-modal-content { display: flex; max-height: min(768px, calc(100dvh - 40px)); padding: 0; flex-direction: column; overflow: hidden; border-radius: var(--ty-radius-12); }
 .skill-detail-modal .ant-modal-close { top: 14px; right: 14px; }
 .skill-detail-modal .ant-modal-body { min-height: 0; padding: 28px 0 12px; overflow-y: auto; }
