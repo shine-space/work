@@ -3409,23 +3409,6 @@ function ConversationWorkspace({
                       </AnimatePresence>
                     </div>
 
-                  {activeRuntimeError ? (
-                    <div className="runtime-alert" role="alert">
-                      <span className="font-strong">本轮运行需要处理</span>
-                      <span>{activeRuntimeError}</span>
-                      <Button
-                        size="small"
-                        type="text"
-                        icon={<X size={14} />}
-                        onClick={() => setConversationTasks((current) => {
-                          const next = { ...current };
-                          delete next[activeConversationId];
-                          return next;
-                        })}
-                      />
-                    </div>
-                  ) : null}
-
                     <ThreadView
                       key={activeConversationId}
                       conversationId={activeConversationId}
@@ -3450,6 +3433,7 @@ function ConversationWorkspace({
                                 : application
                             ))
                           : selectableCatalogApplications}
+                      runtimeError={activeRuntimeError}
                       availableApplications={getCreatedDigitalEmployees(conversations)}
                       availableProjects={activeProjectList}
                       enableApplicationMentions={Boolean(pendingTargetProject) || !isStandaloneConversation}
@@ -3472,6 +3456,11 @@ function ConversationWorkspace({
                       onTargetProjectSelect={selectConversationTargetProject}
                       onBrowseApplication={openConversationTargetApplication}
                       onBrowseProject={openProject}
+                      onRuntimeErrorDismiss={() => setConversationTasks((current) => {
+                        const next = { ...current };
+                        delete next[activeConversationId];
+                        return next;
+                      })}
                       onStop={() => cancelApplicationRun(activeConversationId)}
                       uploadProps={{ beforeUpload, multiple: true, showUploadList: false }}
                     />
@@ -10083,6 +10072,7 @@ type ThreadViewProps = {
   catalogApplicationId: string | null;
   project?: Project | null;
   projectApplications?: CatalogApplication[];
+  runtimeError?: string | null;
   availableApplications: CatalogApplication[];
   availableProjects: Project[];
   enableApplicationMentions?: boolean;
@@ -10095,6 +10085,7 @@ type ThreadViewProps = {
   onTargetProjectSelect: (projectId: string) => void;
   onBrowseApplication: (applicationId: string) => void;
   onBrowseProject: (projectId: string) => void;
+  onRuntimeErrorDismiss: () => void;
   onStop: () => void;
   uploadProps: UploadProps;
 };
@@ -10108,6 +10099,7 @@ function ThreadView({
   catalogApplicationId,
   project,
   projectApplications,
+  runtimeError,
   availableApplications,
   availableProjects,
   enableApplicationMentions = false,
@@ -10120,6 +10112,7 @@ function ThreadView({
   onTargetProjectSelect,
   onBrowseApplication,
   onBrowseProject,
+  onRuntimeErrorDismiss,
   onStop,
   uploadProps,
 }: ThreadViewProps) {
@@ -10175,26 +10168,41 @@ function ThreadView({
         </div>
 
         <ThreadPrimitive.ViewportFooter className="composer-footer">
-          <Composer
-            conversationId={conversationId}
-            selectedApplication={selectedCatalogApplication}
-            selectedProject={project}
-            showConversationTarget={showConversationTarget}
-            availableApplications={availableApplications}
-            availableProjects={availableProjects}
-            projectApplications={projectApplications}
-            enableApplicationMentions={enableApplicationMentions}
-            insertApplicationMentionRef={insertApplicationMentionRef}
-            insertStarterPromptRef={insertStarterPromptRef}
-            resourceFiles={resourceFiles}
-            resourceConversations={resourceConversations}
-            files={files}
-            onFileRemove={onFileRemove}
-            onTargetApplicationSelect={onTargetApplicationSelect}
-            onTargetProjectSelect={onTargetProjectSelect}
-            onStop={onStop}
-            uploadProps={uploadProps}
-          />
+          <div className="composer-runtime-stack">
+            {runtimeError ? (
+              <div className="runtime-alert" role="alert">
+                <span className="font-strong">本轮运行需要处理</span>
+                <span>{runtimeError}</span>
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<X size={14} />}
+                  aria-label="关闭运行提示"
+                  onClick={onRuntimeErrorDismiss}
+                />
+              </div>
+            ) : null}
+            <Composer
+              conversationId={conversationId}
+              selectedApplication={selectedCatalogApplication}
+              selectedProject={project}
+              showConversationTarget={showConversationTarget}
+              availableApplications={availableApplications}
+              availableProjects={availableProjects}
+              projectApplications={projectApplications}
+              enableApplicationMentions={enableApplicationMentions}
+              insertApplicationMentionRef={insertApplicationMentionRef}
+              insertStarterPromptRef={insertStarterPromptRef}
+              resourceFiles={resourceFiles}
+              resourceConversations={resourceConversations}
+              files={files}
+              onFileRemove={onFileRemove}
+              onTargetApplicationSelect={onTargetApplicationSelect}
+              onTargetProjectSelect={onTargetProjectSelect}
+              onStop={onStop}
+              uploadProps={uploadProps}
+            />
+          </div>
           {isEmpty && !enableApplicationMentions && !selectedCatalogApplication ? (
             <NewConversationTargetBrowser
               applications={availableApplications}
