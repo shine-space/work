@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 
-test('switching teams isolates employees, history, Skills and resources', async () => {
+test('teams share the organization Skill catalog but isolate employees, history and resources', async () => {
   const server = await createServer({ configFile: false, server: { middlewareMode: true }, appType: 'custom' });
   const previousFetch = globalThis.fetch;
   const previousWindow = globalThis.window;
@@ -18,7 +18,7 @@ test('switching teams isolates employees, history, Skills and resources', async 
     else if (url.endsWith('/participation-bindings/list')) data = { items: [{ binding: { participation_binding_id: team, scope_type: body.scope_type, scope_id: team }, deployment_revision: { application_id: team } }] };
     else if (url.endsWith('/commands/work')) data = { items: ['a', 'b'].filter(id => !team || id === team).map(id => ({ command_id: id, purpose: 'employee', scope_type: 'team', scope_id: id })) };
     else if (url.endsWith('/commands/detail')) data = { employee_turns: [] };
-    else if (url.endsWith('/skills/catalog')) data = { items: ['a', 'b'].map(id => ({ skill_id: id })) };
+    else if (url.endsWith('/skills/catalog')) data = { items: [{ skill_id: body.cursor ? 'b' : 'a' }], next_cursor: body.cursor ? '' : 'next' };
     else if (url.endsWith('/skills/spaces/list')) data = { items: [{ skill_id: team }] };
     else if (url.endsWith('/knowledge/bases/list')) data = { knowledge_bases: [{ knowledge_base_id: team, name: team }] };
     else if (url.endsWith('/knowledge/documents/list')) data = { documents: [{ id: body.knowledge_base_id, filename: `${body.knowledge_base_id}.txt`, title: '', updated_at: '' }] };
@@ -31,12 +31,14 @@ test('switching teams isolates employees, history, Skills and resources', async 
       const data = await loadArgusUserData('/api', 'ws', new AbortController().signal, team);
       assert.deepEqual(data.applications.map(x => x.application_id), [team]);
       assert.deepEqual(data.work.map(x => x.command_id), [team]);
-      assert.deepEqual(data.skills.map(x => x.skill_id), [team]);
+      assert.deepEqual(data.skills.map(x => x.skill_id), ['a', 'b']);
       assert.deepEqual(data.resources.flatMap(x => x.resources.map(f => f.name)), [`${team}.txt`]);
       assert.deepEqual(data.bindings.map(x => x.binding.scope_id), [team]);
     }
     const empty = await loadArgusUserData('/api', 'ws', new AbortController().signal, null);
-    assert.deepEqual(empty, { applications: [], bindings: [], work: [], skills: [], resources: [] });
+    assert.deepEqual(empty, { applications: [], bindings: [], work: [], skills: [{ skill_id: 'a' }, { skill_id: 'b' }], resources: [] });
+    assert.equal(calls.some(x => x.url.endsWith('/skills/spaces/list')), false);
+    assert.ok(calls.filter(x => x.url.endsWith('/skills/catalog')).every(x => x.body.workspace_id === 'ws' && !x.body.space_id && !x.body.scope_id));
     assert.ok(calls.filter(x => x.url.endsWith('/commands/detail')).every(x => ['a', 'b'].includes(x.body.command_id)));
   } finally {
     globalThis.fetch = previousFetch;
@@ -71,19 +73,23 @@ test('team selection survives reload, separates account caches and drops revoked
     await reload();
     assert.equal(scope.getActiveTeam().id, 'a');
     storage.set(scope.teamStorageKey('projects'), 'team-a-project');
+    storage.set(scope.teamStorageKey('argus-skill-installations-v1'), 'team-a-installations');
     scope.selectTeam('b', '/office/apps');
     assert.equal(destination, '/office/apps');
     await reload();
     assert.equal(scope.getActiveTeam().id, 'b');
     assert.equal(storage.get(scope.teamStorageKey('projects')), undefined);
+    assert.equal(storage.get(scope.teamStorageKey('argus-skill-installations-v1')), undefined);
     await reload();
     assert.equal(scope.getActiveTeam().id, 'b');
     scope.selectTeam('a', '/office/apps');
     await reload();
     assert.equal(storage.get(scope.teamStorageKey('projects')), 'team-a-project');
+    assert.equal(storage.get(scope.teamStorageKey('argus-skill-installations-v1')), 'team-a-installations');
     user = 2;
     await reload();
     assert.equal(storage.get(scope.teamStorageKey('projects')), undefined);
+    assert.equal(storage.get(scope.teamStorageKey('argus-skill-installations-v1')), undefined);
     active = [];
     await reload();
     assert.equal(scope.getActiveTeam(), null);

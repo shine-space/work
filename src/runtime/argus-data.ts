@@ -84,8 +84,12 @@ async function readAll<T>(
 }
 
 export async function loadArgusUserData(baseUrl: string, workspaceId: string, signal: AbortSignal, teamId: string | null): Promise<ArgusUserData> {
-  if (!teamId) return { applications: [], bindings: [], work: [], skills: [], resources: [] };
-  const [applications, bindings, workItems, skillCatalog, installedSkills, resources] = await Promise.all([
+  // Discovery belongs to the organization; installation targets belong to the team.
+  const loadSkills = () => readAll((cursor) => requestArgusJson<ArgusSkillCatalog>(
+    baseUrl, "/skills/catalog", { workspace_id: workspaceId, cursor, limit: 200 }, signal,
+  ));
+  if (!teamId) return { applications: [], bindings: [], work: [], skills: await loadSkills(), resources: [] };
+  const [applications, bindings, workItems, skillCatalog, resources] = await Promise.all([
     readAll((cursor) => requestArgusJson<{ items: ArgusCatalogApplication[]; next_cursor?: string }>(
       baseUrl,
       "/v1/applications/catalog/list",
@@ -99,13 +103,7 @@ export async function loadArgusUserData(baseUrl: string, workspaceId: string, si
       { workspace_id: workspaceId, scope_type: "team", scope_id: teamId, cursor, limit: 100 },
       signal,
     )),
-    readAll((cursor) => requestArgusJson<ArgusSkillCatalog>(
-      baseUrl,
-      "/skills/catalog",
-      { workspace_id: workspaceId, cursor, limit: 200 },
-      signal,
-    )),
-    requestArgusJson<{ items: Array<{ skill_id: string }> }>(baseUrl, "/skills/spaces/list", { workspace_id: workspaceId, space_id: teamId }, signal),
+    loadSkills(),
     loadTeamResources(baseUrl, workspaceId, teamId, signal),
   ]);
 
@@ -120,10 +118,9 @@ export async function loadArgusUserData(baseUrl: string, workspaceId: string, si
     ),
   })));
   const boundApplications = new Set(bindings.map(item => item.deployment_revision.application_id));
-  const skillIds = new Set(installedSkills.items.map(item => item.skill_id));
   return {
     applications: applications.filter(item => item.team_id === teamId || boundApplications.has(item.application_id)),
     bindings, work, resources,
-    skills: skillCatalog.filter(item => skillIds.has(item.skill_id)),
+    skills: skillCatalog,
   };
 }

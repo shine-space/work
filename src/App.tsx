@@ -149,6 +149,7 @@ import FolderFloat from "./components/FolderFloat";
 import { createApplicationRuntime, type RuntimeEvent } from "./runtime";
 import { hasArgusSession, loginArgus } from "./runtime/argus-api";
 import { getActiveTeam, getUserTeams, initializeTeamScope, selectTeam, teamStorageKey } from "./runtime/team-scope";
+import { isCurrentTeamSkillTarget } from "./runtime/skill-install-scope";
 import { loadArgusUserData, type ArgusBindingView, type ArgusCatalogApplication, type ArgusSkillCatalogItem, type ArgusUserData } from "./runtime/argus-data";
 import { createTheme } from "./theme";
 
@@ -1728,13 +1729,21 @@ function ConversationWorkspace({
     targetId: string,
     targetName: string,
   ) => {
+    if (argusRuntimeEnabled && !isCurrentTeamSkillTarget({
+      teamId: getActiveTeam()?.id ?? null,
+      employeeIds: getCreatedDigitalEmployees(conversations).map((application) => application.id),
+      projectIds: projectList.filter((project) => !project.archived).map((project) => project.id),
+    }, targetType, targetId)) {
+      antMessage.warning("只能安装到当前团队的数字员工或群组项目");
+      return;
+    }
     if (isSkillInstalledAtTarget(skillInstallations, skill.id, targetType, targetId)) return;
     setSkillInstallations((current) => [
       ...current,
       { skillId: skill.id, targetType, targetId },
     ]);
     antMessage.success(`${skill.name}已安装到${targetName}`);
-  }, [antMessage, skillInstallations]);
+  }, [antMessage, conversations, projectList, skillInstallations]);
 
   useEffect(() => {
     const handlePopState = () => setPathname(getWorkspacePathname(window.location.pathname));
