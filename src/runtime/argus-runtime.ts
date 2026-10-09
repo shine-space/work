@@ -27,6 +27,9 @@ type BindingView = {
 
 type CommandView = {
   command: { command_id: string; runtime_run_id: string };
+  agent_run?: {
+    status: string;
+  };
   employee_turns?: Array<{
     command_id: string;
     answer: string;
@@ -40,6 +43,32 @@ type ArgusRuntimeOptions = {
 };
 
 const COMMAND_STORAGE_PREFIX = "argus-user-client-command:";
+const COMMAND_POLL_INTERVAL_MS = 1_000;
+const COMMAND_POLL_TIMEOUT_MS = 10 * 60_000;
+
+function employeeTurn(view: CommandView) {
+  return [...(view.employee_turns ?? [])].reverse().find((item) => (
+    item.command_id === view.command.command_id && item.answer.trim()
+  )) ?? [...(view.employee_turns ?? [])].reverse().find((item) => item.answer.trim());
+}
+
+function waitForPoll(signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => {
+      window.clearTimeout(timeout);
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    };
+    const timeout = window.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, COMMAND_POLL_INTERVAL_MS);
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 export class ArgusApplicationRuntime implements ApplicationRuntime {
   readonly kind = "argus" as const;
@@ -98,7 +127,7 @@ export class ArgusApplicationRuntime implements ApplicationRuntime {
     ) || undefined;
 
     onEvent({ type: "participant.updated", participantId: participant.id, status: "running" });
-    const view = await requestArgusJson<CommandView>(
+    let view = await requestArgusJson<CommandView>(
       this.options.baseUrl,
       "/v1/applications/representative/run",
       {
@@ -115,13 +144,35 @@ export class ArgusApplicationRuntime implements ApplicationRuntime {
 
     const runId = view.command.runtime_run_id || view.command.command_id;
     const messageId = `message-${view.command.command_id}`;
-    const turn = [...(view.employee_turns ?? [])].reverse().find((item) => (
-      item.command_id === view.command.command_id && item.answer.trim()
-    )) ?? [...(view.employee_turns ?? [])].reverse().find((item) => item.answer.trim());
-    if (!turn) throw new Error("数字员工命令已受理，但尚未返回可展示的回答，请稍后在工作记录中查看。");
-
     window.localStorage.setItem(`${COMMAND_STORAGE_PREFIX}${request.conversationId}`, view.command.command_id);
     onEvent({ type: "run.started", runId });
+
+    const pollStartedAt = Date.now();
+    let turn = employeeTurn(view);
+    while (!turn) {
+      const status = view.agent_run?.status;
+      if (status === "failed") {
+        throw new Error("数字员工运行失败，请在管理端运行记录中查看原因后重试。");
+      }
+      if (status === "canceled" || status === "cancelled") {
+        onEvent({ type: "participant.updated", participantId: participant.id, status: "error" });
+        onEvent({ type: "run.cancelled" });
+        return;
+      }
+      if (Date.now() - pollStartedAt >= COMMAND_POLL_TIMEOUT_MS) {
+        throw new Error("数字员工仍在处理中，请稍后重试或到管理端运行记录查看进度。");
+      }
+      await waitForPoll(signal);
+      view = await requestArgusJson<CommandView>(
+        this.options.baseUrl,
+        "/v1/applications/commands/detail",
+        { workspace_id: this.options.workspaceId, command_id: view.command.command_id },
+        signal,
+      );
+      if (signal.aborted) return;
+      turn = employeeTurn(view);
+    }
+
     onEvent({ type: "message.started", messageId, participantId: participant.id });
     onEvent({ type: "message.delta", messageId, participantId: participant.id, delta: turn.answer });
     onEvent({ type: "participant.updated", participantId: participant.id, status: "success" });
