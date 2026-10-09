@@ -1,5 +1,7 @@
 import { requestArgusJson } from "./argus-api";
 import { listUserApplicationBindings, type ArgusBindingView } from "./argus-bindings";
+import { loadTeamResources } from "./team-resources";
+import type { TeamResourceGroup } from "../data";
 
 export type { ArgusBindingView } from "./argus-bindings";
 
@@ -65,6 +67,7 @@ export type ArgusUserData = {
   bindings: ArgusBindingView[];
   work: Array<ArgusWorkItem & { detail: ArgusCommandView }>;
   skills: ArgusSkillCatalogItem[];
+  resources: TeamResourceGroup[];
 };
 
 async function readAll<T>(
@@ -80,30 +83,33 @@ async function readAll<T>(
   return items;
 }
 
-export async function loadArgusUserData(baseUrl: string, workspaceId: string, signal: AbortSignal): Promise<ArgusUserData> {
-  const [applications, bindings, workItems, skillCatalog] = await Promise.all([
+export async function loadArgusUserData(baseUrl: string, workspaceId: string, signal: AbortSignal, teamId: string | null): Promise<ArgusUserData> {
+  if (!teamId) return { applications: [], bindings: [], work: [], skills: [], resources: [] };
+  const [applications, bindings, workItems, skillCatalog, installedSkills, resources] = await Promise.all([
     readAll((cursor) => requestArgusJson<{ items: ArgusCatalogApplication[]; next_cursor?: string }>(
       baseUrl,
       "/v1/applications/catalog/list",
       { workspace_id: workspaceId, cursor, limit: 100 },
       signal,
     )),
-    listUserApplicationBindings(baseUrl, workspaceId, signal),
+    listUserApplicationBindings(baseUrl, workspaceId, signal, teamId),
     readAll((cursor) => requestArgusJson<{ items: ArgusWorkItem[]; next_cursor?: string }>(
       baseUrl,
       "/v1/applications/commands/work",
-      { workspace_id: workspaceId, cursor, limit: 100 },
+      { workspace_id: workspaceId, scope_type: "team", scope_id: teamId, cursor, limit: 100 },
       signal,
     )),
-    requestArgusJson<ArgusSkillCatalog>(
+    readAll((cursor) => requestArgusJson<ArgusSkillCatalog>(
       baseUrl,
       "/skills/catalog",
-      { workspace_id: workspaceId, limit: 200 },
+      { workspace_id: workspaceId, cursor, limit: 200 },
       signal,
-    ),
+    )),
+    requestArgusJson<{ items: Array<{ skill_id: string }> }>(baseUrl, "/skills/spaces/list", { workspace_id: workspaceId, space_id: teamId }, signal),
+    loadTeamResources(baseUrl, workspaceId, teamId, signal),
   ]);
 
-  const employeeWork = workItems.filter((item) => item.purpose === "employee");
+  const employeeWork = workItems.filter((item) => item.purpose === "employee" && item.scope_type === "team" && item.scope_id === teamId);
   const work = await Promise.all(employeeWork.map(async (item) => ({
     ...item,
     detail: await requestArgusJson<ArgusCommandView>(
@@ -113,5 +119,11 @@ export async function loadArgusUserData(baseUrl: string, workspaceId: string, si
       signal,
     ),
   })));
-  return { applications, bindings, work, skills: skillCatalog.items };
+  const boundApplications = new Set(bindings.map(item => item.deployment_revision.application_id));
+  const skillIds = new Set(installedSkills.items.map(item => item.skill_id));
+  return {
+    applications: applications.filter(item => item.team_id === teamId || boundApplications.has(item.application_id)),
+    bindings, work, resources,
+    skills: skillCatalog.filter(item => skillIds.has(item.skill_id)),
+  };
 }

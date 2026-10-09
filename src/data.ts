@@ -46,6 +46,7 @@ export type GeneratedFile = {
 };
 
 export type TeamResource = {
+  knowledgeBaseId?: string;
   id: string;
   name: string;
   updatedAt: string;

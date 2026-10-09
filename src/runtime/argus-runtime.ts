@@ -1,5 +1,6 @@
 import { requestArgusJson } from "./argus-api";
-import { listUserApplicationBindings, type ArgusBindingView } from "./argus-bindings";
+import { getActiveTeam, teamStorageKey } from "./team-scope";
+import { listUserApplicationBindings } from "./argus-bindings";
 import type {
   ApplicationRuntime,
   RuntimeEventHandler,
@@ -54,22 +55,16 @@ function waitForPoll(signal: AbortSignal) {
 
 export class ArgusApplicationRuntime implements ApplicationRuntime {
   readonly kind = "argus" as const;
-  private bindingsPromise: Promise<ArgusBindingView[]> | null = null;
 
   constructor(private readonly options: ArgusRuntimeOptions) {}
 
   private async listBindings(signal: AbortSignal) {
-    this.bindingsPromise ??= listUserApplicationBindings(
+    return listUserApplicationBindings(
       this.options.baseUrl,
       this.options.workspaceId,
       signal,
+      getActiveTeam()?.id ?? null,
     );
-    try {
-      return await this.bindingsPromise;
-    } catch (error) {
-      this.bindingsPromise = null;
-      throw error;
-    }
   }
 
   private async resolveBinding(request: RuntimeRunRequest, signal: AbortSignal) {
@@ -104,7 +99,7 @@ export class ArgusApplicationRuntime implements ApplicationRuntime {
     const participant = request.participants[0];
     const binding = await this.resolveBinding(request, signal);
     const previousCommandId = window.localStorage.getItem(
-      `${COMMAND_STORAGE_PREFIX}${request.conversationId}`,
+      teamStorageKey(`${COMMAND_STORAGE_PREFIX}${request.conversationId}`),
     ) || undefined;
 
     onEvent({ type: "participant.updated", participantId: participant.id, status: "running" });
@@ -125,7 +120,7 @@ export class ArgusApplicationRuntime implements ApplicationRuntime {
 
     const runId = view.command.runtime_run_id || view.command.command_id;
     const messageId = `message-${view.command.command_id}`;
-    window.localStorage.setItem(`${COMMAND_STORAGE_PREFIX}${request.conversationId}`, view.command.command_id);
+    window.localStorage.setItem(teamStorageKey(`${COMMAND_STORAGE_PREFIX}${request.conversationId}`), view.command.command_id);
     onEvent({ type: "run.started", runId });
 
     const pollStartedAt = Date.now();

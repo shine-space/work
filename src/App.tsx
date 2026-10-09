@@ -150,6 +150,7 @@ import {
 import FolderFloat from "./components/FolderFloat";
 import { createApplicationRuntime, type RuntimeEvent } from "./runtime";
 import { hasArgusSession, loginArgus } from "./runtime/argus-api";
+import { getActiveTeam, getUserTeams, initializeTeamScope, selectTeam, teamStorageKey } from "./runtime/team-scope";
 import { loadArgusUserData, type ArgusBindingView, type ArgusCatalogApplication, type ArgusSkillCatalogItem, type ArgusUserData } from "./runtime/argus-data";
 import { createTheme } from "./theme";
 
@@ -196,6 +197,14 @@ const applicationRuntime = createApplicationRuntime();
 const argusRuntimeEnabled = applicationRuntime.kind === "argus";
 const argusRuntimeBaseUrl = import.meta.env.VITE_RUNTIME_BASE_URL || "/api";
 const argusWorkspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_argus_default";
+const scopedStorage = {
+  getItem: (key: string) => window.localStorage.getItem(argusRuntimeEnabled ? teamStorageKey(key) : key),
+  setItem: (key: string, value: string) => window.localStorage.setItem(argusRuntimeEnabled ? teamStorageKey(key) : key, value),
+};
+if (argusRuntimeEnabled) {
+  teamResourceGroups.splice(0);
+  generatedFiles.splice(0);
+}
 const USER_PROJECTS_STORAGE_KEY = `argus-user-projects-v1:${argusWorkspaceId}`;
 const HIDDEN_NAVIGATION_STORAGE_KEY = `argus:hidden-navigation-keys:${argusWorkspaceId}`;
 const DELETED_CONVERSATIONS_STORAGE_KEY = `argus:deleted-conversation-ids:${argusWorkspaceId}`;
@@ -205,7 +214,7 @@ const applicationStudioUrl = import.meta.env.VITE_APPLICATION_STUDIO_URL?.trim()
 
 function readUserProjects(): Project[] {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(USER_PROJECTS_STORAGE_KEY) ?? "[]") as unknown;
+    const parsed = JSON.parse(scopedStorage.getItem(USER_PROJECTS_STORAGE_KEY) ?? "[]") as unknown;
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((item): item is Project => (
       typeof item === "object"
@@ -221,12 +230,12 @@ function readUserProjects(): Project[] {
 }
 
 function saveUserProjects(projectsToSave: Project[]) {
-  window.localStorage.setItem(USER_PROJECTS_STORAGE_KEY, JSON.stringify(projectsToSave));
+  scopedStorage.setItem(USER_PROJECTS_STORAGE_KEY, JSON.stringify(projectsToSave));
 }
 
 function readHiddenNavigationKeys(): string[] {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(HIDDEN_NAVIGATION_STORAGE_KEY) ?? "[]") as unknown;
+    const parsed = JSON.parse(scopedStorage.getItem(HIDDEN_NAVIGATION_STORAGE_KEY) ?? "[]") as unknown;
     return Array.isArray(parsed)
       ? parsed.filter((key): key is string => typeof key === "string")
       : [];
@@ -237,7 +246,7 @@ function readHiddenNavigationKeys(): string[] {
 
 function readDeletedConversationIds(): string[] {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(DELETED_CONVERSATIONS_STORAGE_KEY) ?? "[]") as unknown;
+    const parsed = JSON.parse(scopedStorage.getItem(DELETED_CONVERSATIONS_STORAGE_KEY) ?? "[]") as unknown;
     return Array.isArray(parsed)
       ? parsed.filter((id): id is string => typeof id === "string")
       : [];
@@ -247,12 +256,12 @@ function readDeletedConversationIds(): string[] {
 }
 
 function saveDeletedConversationIds(ids: string[]) {
-  window.localStorage.setItem(DELETED_CONVERSATIONS_STORAGE_KEY, JSON.stringify(ids));
+  scopedStorage.setItem(DELETED_CONVERSATIONS_STORAGE_KEY, JSON.stringify(ids));
 }
 
 function readDigitalEmployeeAliases(): Record<string, string> {
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(DIGITAL_EMPLOYEE_ALIASES_STORAGE_KEY) ?? "{}") as unknown;
+    const parsed = JSON.parse(scopedStorage.getItem(DIGITAL_EMPLOYEE_ALIASES_STORAGE_KEY) ?? "{}") as unknown;
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
     return Object.fromEntries(
       Object.entries(parsed)
@@ -272,7 +281,7 @@ function readDigitalEmployeeAliases(): Record<string, string> {
 function saveDigitalEmployeeAlias(applicationId: string, alias: string) {
   const normalizedAlias = alias.trim();
   if (!applicationId || !normalizedAlias) return;
-  window.localStorage.setItem(DIGITAL_EMPLOYEE_ALIASES_STORAGE_KEY, JSON.stringify({
+  scopedStorage.setItem(DIGITAL_EMPLOYEE_ALIASES_STORAGE_KEY, JSON.stringify({
     ...readDigitalEmployeeAliases(),
     [applicationId]: normalizedAlias,
   }));
@@ -336,11 +345,6 @@ const getNavigationProjectMenuItems = (pinned: boolean): MenuProps["items"] => [
   { key: "archive", danger: true, icon: <Archive size={14} />, label: "归档" },
 ];
 
-const teamOptions = [
-  { id: "argus", name: "Argus Workspace", shortName: "A", avatarColor: "var(--ui-color-neutral-8)" },
-  { id: "operations", name: "设备运维团队", shortName: "运", avatarColor: "var(--ui-color-team-green)" },
-  { id: "product", name: "产品研发团队", shortName: "研", avatarColor: "var(--ui-color-team-purple)" },
-];
 
 const projectMembers = [
   { id: "demo-user", name: "演示用户", shortName: "演", avatarColor: "var(--ui-color-blue-5)", role: "所有者" },
@@ -574,7 +578,7 @@ function AttachmentSourceMenu({
     });
     teamResourceGroups.forEach((group) => {
       group.resources.forEach((resource) => {
-        if (!selectedResourceKeys.has(`team:${resource.id}`)) return;
+        if (resource.knowledgeBaseId || !selectedResourceKeys.has(`team:${resource.id}`)) return;
         files.push(createSelectedFile(
           new File([`来自团队资源库：${resource.name}`], resource.name, { type: "text/plain" }),
           "resource",
@@ -678,6 +682,8 @@ function AttachmentSourceMenu({
                     return (
                       <label className="attachment-library-file-row" key={key}>
                         <Checkbox
+                          disabled={Boolean(resource.knowledgeBaseId)}
+                          title={resource.knowledgeBaseId ? "团队资源可在文件面板查看；尚未接入原文件引用" : undefined}
                           checked={selectedResourceKeys.has(key)}
                           onChange={(event) => toggleResource(key, event.target.checked)}
                         />
@@ -825,7 +831,7 @@ const initialSkillInstallations: SkillInstallation[] = argusRuntimeEnabled ? [] 
 
 const readSkillInstallations = (): SkillInstallation[] => {
   try {
-    const storedValue = window.localStorage.getItem(SKILL_INSTALLATIONS_STORAGE_KEY);
+    const storedValue = scopedStorage.getItem(SKILL_INSTALLATIONS_STORAGE_KEY);
     if (!storedValue) return initialSkillInstallations;
     const parsedValue = JSON.parse(storedValue) as unknown;
     if (!Array.isArray(parsedValue)) return initialSkillInstallations;
@@ -1053,7 +1059,7 @@ function applyArgusUserData(data: ArgusUserData, userProjects: Project[]) {
         ? item.scope_id
         : null;
       const conversationId = `command-${item.command_id}`;
-      window.localStorage.setItem(`argus-user-client-command:${conversationId}`, item.command_id);
+      scopedStorage.setItem(`argus-user-client-command:${conversationId}`, item.command_id);
       return {
         id: conversationId,
         projectId,
@@ -1514,8 +1520,8 @@ export default function App() {
         {argusRuntimeEnabled && !hasArgusSession() ? (
           <ArgusLoginScreen onAuthenticated={() => setArgusSessionVersion((value) => value + 1)} />
         ) : (
+          <TeamScopeGate key={argusSessionVersion}>
           <ConversationWorkspace
-            key={argusSessionVersion}
             darkMode={darkMode}
             mobileNavigationOpen={mobileNavigationOpen}
             sidebarCollapsed={sidebarCollapsed}
@@ -1523,10 +1529,31 @@ export default function App() {
             onMobileNavigationChange={setMobileNavigationOpen}
             onSidebarCollapsedChange={setSidebarCollapsed}
           />
+          </TeamScopeGate>
         )}
       </AntApp>
     </ConfigProvider>
   );
+}
+
+function TeamScopeGate({ children }: { children: ReactNode }) {
+  const [ready, setReady] = useState(!argusRuntimeEnabled);
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    if (!argusRuntimeEnabled) return;
+    const controller = new AbortController();
+    setError("");
+    void initializeTeamScope(argusRuntimeBaseUrl, argusWorkspaceId, controller.signal)
+      .then(() => { if (!controller.signal.aborted) setReady(true); })
+      .catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "团队读取失败"); });
+    return () => controller.abort();
+  }, [revision]);
+  if (ready) return children;
+  return <main className="runtime-login-page"><section role="status">
+    {error || "正在读取所属团队…"}
+    {error ? <Button onClick={() => setRevision(value => value + 1)}>重试</Button> : null}
+  </section></main>;
 }
 
 function ArgusLoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
@@ -1657,10 +1684,12 @@ function ConversationWorkspace({
     applicationCatalog.splice(0, applicationCatalog.length);
     skillCatalog.splice(0, skillCatalog.length);
     setProjectList(userProjects);
-    void loadArgusUserData(argusRuntimeBaseUrl, argusWorkspaceId, controller.signal)
+    teamResourceGroups.splice(0);
+    void loadArgusUserData(argusRuntimeBaseUrl, argusWorkspaceId, controller.signal, getActiveTeam()?.id ?? null)
       .then((data) => {
         if (controller.signal.aborted) return;
         const realData = applyArgusUserData(data, userProjects);
+        teamResourceGroups.splice(0, teamResourceGroups.length, ...data.resources);
         const deletedConversationIds = new Set(readDeletedConversationIds());
         setProjectList(realData.projects);
         setConversations(realData.conversations.filter((conversation) => (
@@ -1693,11 +1722,11 @@ function ConversationWorkspace({
   }, [antMessage, argusDataReloadRevision]);
 
   useEffect(() => {
-    window.localStorage.setItem(SKILL_INSTALLATIONS_STORAGE_KEY, JSON.stringify(skillInstallations));
+    scopedStorage.setItem(SKILL_INSTALLATIONS_STORAGE_KEY, JSON.stringify(skillInstallations));
   }, [skillInstallations]);
 
   useEffect(() => {
-    window.localStorage.setItem(HIDDEN_NAVIGATION_STORAGE_KEY, JSON.stringify(hiddenNavigationKeys));
+    scopedStorage.setItem(HIDDEN_NAVIGATION_STORAGE_KEY, JSON.stringify(hiddenNavigationKeys));
   }, [hiddenNavigationKeys]);
 
   const installSkill = useCallback((
@@ -1996,15 +2025,16 @@ function ConversationWorkspace({
 
   useEffect(() => {
     if (
+      argusDataLoaded && activeConversation.id !== emptyConversation.id &&
       route.page === "standalone" &&
       activeConversation.projectId === null &&
       route.conversationId !== activeConversation.id
     ) {
       const nextPath = `/conversations/${activeConversation.id}`;
-      window.history.replaceState(null, "", nextPath);
+      window.history.replaceState(null, "", getBrowserPath(nextPath));
       setPathname(nextPath);
     }
-  }, [activeConversation.id, activeConversation.projectId, route]);
+  }, [activeConversation.id, activeConversation.projectId, argusDataLoaded, route]);
 
   const updateConversationMessages = useCallback(
     (conversationId: string, updater: (messages: DemoMessage[]) => DemoMessage[]) => {
@@ -5652,6 +5682,18 @@ function TeamResourcesPanel({
   const [selectedResource, setSelectedResource] = useState<TeamResource | null>(null);
   const [renameResource, setRenameResource] = useState<TeamResource | null>(null);
   const [renameResourceName, setRenameResourceName] = useState("");
+  useEffect(() => {
+    setResourceGroups(groups);
+    setExpandedGroupIds(new Set(groups.map(group => group.id)));
+    setSelectedResource(null);
+  }, [groups, groups.length]);
+  const openResource = (resource: TeamResource) => {
+    if (resource.knowledgeBaseId) {
+      window.open(new URL(`/resources/knowledge/config/${encodeURIComponent(resource.knowledgeBaseId)}`, applicationStudioUrl).toString(), "_blank", "noopener,noreferrer");
+      return;
+    }
+    setSelectedResource(resource);
+  };
 
   const createResourceFile = (resource: TeamResource) => {
     const explorerFile = createTeamResourceExplorerFile(resource);
@@ -5742,7 +5784,8 @@ function TeamResourcesPanel({
             </div>
           </section>
         ) : (
-        <div className="team-resource-groups" aria-label="文件分类">
+        <div className={`team-resource-groups${resourceGroups.some(group => group.resources.length) ? "" : " is-empty"}`} aria-label="文件分类">
+          {!resourceGroups.some(group => group.resources.length) ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无团队资源文件" /> : null}
           {resourceGroups.map((group) => {
             const expanded = expandedGroupIds.has(group.id);
             return (
@@ -5761,7 +5804,9 @@ function TeamResourcesPanel({
                       const extension = resource.name.split(".").pop()?.toLocaleLowerCase() ?? "";
                       const referenceResource = () => onReferenceFile?.(createResourceFile(resource));
                       const explorerFile = createTeamResourceExplorerFile(resource);
-                      const menuItems: MenuProps["items"] = [
+                      const menuItems: MenuProps["items"] = resource.knowledgeBaseId ? [
+                        { key: "open", label: "查看团队资源", onClick: () => openResource(resource) },
+                      ] : [
                         { key: "open", label: "打开文件", onClick: () => setSelectedResource(resource) },
                         onReferenceFile ? { key: "reference", icon: <Paperclip size={14} />, label: "引用该资源", onClick: referenceResource } : null,
                         {
@@ -5785,7 +5830,7 @@ function TeamResourcesPanel({
                           <button
                             className="work-file-main team-resource-static-file"
                             type="button"
-                            onClick={() => setSelectedResource(resource)}
+                            onClick={() => openResource(resource)}
                           >
                             <span className="work-file-type">
                               <FileTypeIcon type={FILE_TYPE_ICON_BY_EXTENSION[extension] ?? "other"} />
@@ -5795,13 +5840,13 @@ function TeamResourcesPanel({
                           <div className="work-file-tail">
                             <small className="work-file-time">{resource.updatedAt}</small>
                             <div className="work-file-actions">
-                              <Tooltip title="下载">
+                              <Tooltip title={resource.knowledgeBaseId ? "查看团队资源" : "下载"}>
                                 <Button
                                   type="text"
                                   size="small"
                                   icon={<Download size={15} />}
-                                  aria-label={`下载${resource.name}`}
-                                  onClick={() => downloadExplorerFile(explorerFile)}
+                                  aria-label={`${resource.knowledgeBaseId ? "查看" : "下载"}${resource.name}`}
+                                  onClick={() => resource.knowledgeBaseId ? openResource(resource) : downloadExplorerFile(explorerFile)}
                                 />
                               </Tooltip>
                               <Dropdown trigger={["click"]} menu={{ items: menuItems }}>
@@ -7314,7 +7359,7 @@ const MAX_LOCAL_UPLOAD_SIZE = 2 * 1024 * 1024;
 
 function readLocalCollection<T>(key: string): T[] {
   try {
-    const value = window.localStorage.getItem(key);
+    const value = scopedStorage.getItem(key);
     return value ? (JSON.parse(value) as T[]) : [];
   } catch {
     return [];
@@ -7322,7 +7367,7 @@ function readLocalCollection<T>(key: string): T[] {
 }
 
 function saveLocalCollection<T>(key: string, value: T[]) {
-  window.localStorage.setItem(key, JSON.stringify(value));
+  scopedStorage.setItem(key, JSON.stringify(value));
 }
 
 function formatBytes(bytes: number) {
@@ -8949,7 +8994,8 @@ function ConversationNavigation({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [activeTeamId, setActiveTeamId] = useState(teamOptions[0].id);
+  const teamOptions = getUserTeams();
+  const activeTeamId = getActiveTeam()?.id ?? "";
   const [navigationMode, setNavigationMode] = useState<"daily" | "app-builder">("daily");
   const [collapsedHistoryOpen, setCollapsedHistoryOpen] = useState(false);
   const [hoveredNavigationKey, setHoveredNavigationKey] = useState<string | null>(null);
@@ -8962,7 +9008,7 @@ function ConversationNavigation({
   const [newProjectApplicationSearch, setNewProjectApplicationSearch] = useState("");
   const [pinnedNavigationKeys, setPinnedNavigationKeys] = useState<string[]>(() => {
     try {
-      const storedKeys = JSON.parse(window.localStorage.getItem("argus:pinned-navigation-keys") ?? "[]");
+      const storedKeys = JSON.parse(scopedStorage.getItem("argus:pinned-navigation-keys") ?? "[]");
       return Array.isArray(storedKeys) ? storedKeys.filter((key): key is string => typeof key === "string") : [];
     } catch {
       return [];
@@ -8972,11 +9018,11 @@ function ConversationNavigation({
   const pinFeedbackTimerRef = useRef<number | null>(null);
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("zh-CN");
   const navigationSortNow = new Date();
-  const activeTeam = teamOptions.find((team) => team.id === activeTeamId) ?? teamOptions[0];
+  const activeTeam = getActiveTeam() ?? { id: "", name: "暂未加入团队", avatarColor: "var(--ui-color-neutral-8)" };
   const teamMenu: MenuProps = {
     selectable: true,
     selectedKeys: [activeTeamId],
-    onClick: ({ key }) => setActiveTeamId(key),
+    onClick: ({ key }) => selectTeam(key, getBrowserPath("/apps")),
     items: teamOptions.map((team) => ({
       key: team.id,
       label: (
@@ -9151,7 +9197,7 @@ function ConversationNavigation({
   }, [activeConversationId, activeProjectId, applicationsPageActive, collapsed]);
 
   useEffect(() => {
-    window.localStorage.setItem("argus:pinned-navigation-keys", JSON.stringify(pinnedNavigationKeys));
+    scopedStorage.setItem("argus:pinned-navigation-keys", JSON.stringify(pinnedNavigationKeys));
   }, [pinnedNavigationKeys]);
 
   useEffect(() => () => {
@@ -9816,13 +9862,13 @@ function ConversationNavigation({
 
       <div className="navigation-account">
         <div className="profile-row">
-          <Dropdown menu={teamMenu} placement="topLeft" trigger={["click"]}>
+          <Dropdown disabled={teamOptions.length < 2} menu={teamMenu} placement="topLeft" trigger={["click"]}>
             <button className="navigation-team-selector" type="button" aria-label={`切换团队，当前为${activeTeam.name}`}>
               <InitialAvatar name={activeTeam.name} color={activeTeam.avatarColor} />
               <span className="navigation-team-copy">
                 <span>{activeTeam.name}</span>
               </span>
-              <ChevronsUpDown size={12} />
+              {teamOptions.length > 1 ? <ChevronsUpDown size={12} /> : null}
             </button>
           </Dropdown>
           <Dropdown
@@ -9966,7 +10012,7 @@ const MESSAGE_FLAGS_STORAGE_PREFIX = "argus-conversation-message-flags-v1";
 
 function readMessageFlags(conversationId: string) {
   try {
-    const value = window.localStorage.getItem(`${MESSAGE_FLAGS_STORAGE_PREFIX}:${conversationId}`);
+    const value = scopedStorage.getItem(`${MESSAGE_FLAGS_STORAGE_PREFIX}:${conversationId}`);
     return value ? (JSON.parse(value) as string[]) : [];
   } catch {
     return [];
@@ -10049,7 +10095,7 @@ function ConversationQuickNavigator({
       const next = current.includes(messageId)
         ? current.filter((item) => item !== messageId)
         : [...current, messageId];
-      window.localStorage.setItem(`${MESSAGE_FLAGS_STORAGE_PREFIX}:${conversationId}`, JSON.stringify(next));
+      scopedStorage.setItem(`${MESSAGE_FLAGS_STORAGE_PREFIX}:${conversationId}`, JSON.stringify(next));
       return next;
     });
   };

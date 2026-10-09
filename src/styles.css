@@ -1487,6 +1487,9 @@ button.settings-logout-item:focus-visible > svg { color: currentColor !important
 .project-files-panel-title h5 { margin: 0; color: var(--ant-color-text); font-size: 14px; font-weight: var(--ant-font-weight-strong); line-height: 22px; }
 .project-files-panel-title small { overflow: hidden; color: var(--ant-color-text-secondary); font-size: 12px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 .project-files-panel-body { height: calc(100% - 52px); padding:0 16px 0 12px; overflow-y: overlay; }
+.team-resource-groups.is-empty { min-height: 100%; display: grid; place-content: center; }
+.team-resource-groups.is-empty > .team-resource-group { display: none; }
+.team-resource-groups.is-empty .ant-empty-description { font-size: 12px; color: var(--ant-color-text-quaternary); }
 .project-files-panel .work-files { min-height: 0; }
 .project-files-panel .work-files-toolbar { grid-template-columns: minmax(120px, 1fr) auto; }
 .project-files-panel .work-files-toolbar-actions { gap: 6px; }
