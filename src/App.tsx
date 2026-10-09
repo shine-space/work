@@ -197,6 +197,7 @@ const argusRuntimeEnabled = applicationRuntime.kind === "argus";
 const argusRuntimeBaseUrl = import.meta.env.VITE_RUNTIME_BASE_URL || "/api";
 const argusWorkspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_argus_default";
 const USER_PROJECTS_STORAGE_KEY = `argus-user-projects-v1:${argusWorkspaceId}`;
+const HIDDEN_NAVIGATION_STORAGE_KEY = `argus:hidden-navigation-keys:${argusWorkspaceId}`;
 const applicationStudioUrl = import.meta.env.VITE_APPLICATION_STUDIO_URL?.trim()
   || `${window.location.protocol}//${window.location.hostname}:5173/applications/studio`;
 
@@ -219,6 +220,17 @@ function readUserProjects(): Project[] {
 
 function saveUserProjects(projectsToSave: Project[]) {
   window.localStorage.setItem(USER_PROJECTS_STORAGE_KEY, JSON.stringify(projectsToSave));
+}
+
+function readHiddenNavigationKeys(): string[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(HIDDEN_NAVIGATION_STORAGE_KEY) ?? "[]") as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((key): key is string => typeof key === "string")
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 const taskStatusPriority: Record<ConversationTaskState["status"], number> = {
@@ -1513,6 +1525,13 @@ type ConversationWorkspaceProps = {
   onSidebarCollapsedChange: (value: boolean) => void;
 };
 
+const getConversationNavigationKey = (conversation: Conversation) => {
+  const application = conversation.projectId === null
+    ? getConversationCatalogApplication(conversation)
+    : undefined;
+  return application ? `application:${application.id}` : `conversation:${conversation.id}`;
+};
+
 const emptyProject: Project = {
   id: "",
   name: "暂无群组项目",
@@ -1544,6 +1563,7 @@ function ConversationWorkspace({
   const reduceTaskIslandMotion = useReducedMotion();
   const [projectList, setProjectList] = useState<Project[]>(argusRuntimeEnabled ? readUserProjects : () => projects);
   const [conversations, setConversations] = useState(argusRuntimeEnabled ? [] : initialConversations);
+  const [hiddenNavigationKeys, setHiddenNavigationKeys] = useState<string[]>(readHiddenNavigationKeys);
   const [argusDataLoaded, setArgusDataLoaded] = useState(!argusRuntimeEnabled);
   const [argusDataReloadRevision, setArgusDataReloadRevision] = useState(0);
   const argusDataErrorNotifiedRef = useRef(false);
@@ -1624,6 +1644,10 @@ function ConversationWorkspace({
   useEffect(() => {
     window.localStorage.setItem(SKILL_INSTALLATIONS_STORAGE_KEY, JSON.stringify(skillInstallations));
   }, [skillInstallations]);
+
+  useEffect(() => {
+    window.localStorage.setItem(HIDDEN_NAVIGATION_STORAGE_KEY, JSON.stringify(hiddenNavigationKeys));
+  }, [hiddenNavigationKeys]);
 
   const installSkill = useCallback((
     skill: SkillDefinition,
@@ -2528,6 +2552,10 @@ function ConversationWorkspace({
   const switchConversation = (conversationId: string) => {
     const conversation = conversations.find((item) => item.id === conversationId);
     if (!conversation) return;
+    if (conversation.projectId === null) {
+      const navigationKey = getConversationNavigationKey(conversation);
+      setHiddenNavigationKeys((current) => current.filter((key) => key !== navigationKey));
+    }
     changeTaskOverlay(null);
     discardActiveEmptyConversation(conversationId);
     setSelectedFiles([]);
@@ -2704,6 +2732,7 @@ function ConversationWorkspace({
   };
 
   const launchStandaloneApplication = (application: CatalogApplication, alias: string) => {
+    setHiddenNavigationKeys((current) => current.filter((key) => key !== `application:${application.id}`));
     createStandaloneConversation(application.contextId, application.id, alias);
     antMessage.success(`${alias}已创建`);
   };
@@ -2928,32 +2957,17 @@ function ConversationWorkspace({
   };
 
   const removeConversationFromList = (conversation: Conversation) => {
-    const standaloneApplicationId = conversation.projectId === null
-      ? getConversationCatalogApplication(conversation)?.id
-      : null;
-    const removedConversationIds = new Set(
-      conversations
-        .filter((item) => item.id === conversation.id || (
-          standaloneApplicationId
-          && item.projectId === null
-          && getConversationCatalogApplication(item)?.id === standaloneApplicationId
-        ))
-        .map((item) => item.id),
-    );
-    const remaining = conversations.filter((item) => !removedConversationIds.has(item.id));
-    if (removedConversationIds.has(activeConversationId)) {
-      const fallback = remaining.find((item) => item.projectId === conversation.projectId);
-      navigateTo(fallback
-        ? fallback.projectId === null
-          ? `/conversations/${fallback.id}`
-          : `/projects/${fallback.projectId}/conversations/${fallback.id}`
-        : conversation.projectId === null
-          ? "/apps"
-          : `/projects/${conversation.projectId}`);
+    const navigationKey = getConversationNavigationKey(conversation);
+    setHiddenNavigationKeys((current) => current.includes(navigationKey)
+      ? current
+      : [...current, navigationKey]);
+    if (conversation.projectId === null) {
+      navigateTo("/apps");
+    } else if (conversation.id === activeConversationId) {
+      navigateTo(`/projects/${conversation.projectId}`);
     }
-    setConversations(remaining);
     const label = getConversationCatalogApplication(conversation)?.name ?? conversation.title;
-    antMessage.success(`已从列表中移除“${label}”`);
+    antMessage.success(`已从对话列表中移除“${label}”，历史记录已保留`);
   };
 
   const beforeUpload: UploadProps["beforeUpload"] = (file) => {
@@ -2972,6 +2986,7 @@ function ConversationWorkspace({
       isStandaloneConversation={isStandaloneConversation}
       projectNavigationActive={route.page === "project" || route.page === "conversation"}
       conversations={conversations}
+      hiddenNavigationKeys={hiddenNavigationKeys}
       conversationTasks={taskList}
       viewedTaskVersions={viewedTaskVersions}
       projects={activeProjectList}
@@ -8750,6 +8765,7 @@ type ConversationNavigationProps = {
   isStandaloneConversation: boolean;
   projectNavigationActive: boolean;
   conversations: Conversation[];
+  hiddenNavigationKeys: string[];
   conversationTasks: ConversationTaskState[];
   viewedTaskVersions: Record<string, number>;
   projects: Project[];
@@ -8826,6 +8842,7 @@ function ConversationNavigation({
   isStandaloneConversation,
   projectNavigationActive,
   conversations,
+  hiddenNavigationKeys,
   conversationTasks,
   viewedTaskVersions,
   projects,
@@ -8943,6 +8960,7 @@ function ConversationNavigation({
     ),
   }));
   const filteredStandaloneConversationGroups = standaloneConversationGroups.filter((group) => {
+    if (hiddenNavigationKeys.includes(group.key)) return false;
     if (!normalizedQuery) return true;
     const standaloneApplicationName = group.application?.name;
     return [
