@@ -8996,6 +8996,8 @@ function ConversationNavigation({
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
+  const [accountSettingsPrimed, setAccountSettingsPrimed] = useState(false);
+  useEffect(() => { if (settingsOpen) setAccountSettingsPrimed(true); }, [settingsOpen]);
   const closeAccountSettings = useCallback(() => setAccountSettingsOpen(false), []);
   const teamOptions = getUserTeams();
   const activeTeamId = getActiveTeam()?.id ?? "";
@@ -9888,7 +9890,7 @@ function ConversationNavigation({
         </>
       )}
 
-      {accountSettingsOpen && <SharedAccountOverlay managementUrl={applicationStudioUrl} onClose={closeAccountSettings} />}
+      {(accountSettingsPrimed || accountSettingsOpen) && <SharedAccountOverlay managementUrl={applicationStudioUrl} open={accountSettingsOpen} onClose={closeAccountSettings} />}
       <Modal
         className="create-project-modal"
         title="创建群组项目"

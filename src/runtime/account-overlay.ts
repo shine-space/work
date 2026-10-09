@@ -3,6 +3,7 @@ export function accountOverlayUrl(managementUrl: string, callerUrl: string) {
   const caller = new URL(callerUrl);
   if (!caller.pathname.startsWith('/office/')) caller.pathname = `/office${caller.pathname}`;
   url.searchParams.set('embed', '1');
+  url.searchParams.set('preload', '1');
   url.searchParams.set('return_to', caller.toString());
   return url.toString();
 }
