@@ -9707,7 +9707,7 @@ function ConversationNavigation({
               allowClear
               onChange={(event) => setNewProjectApplicationSearch(event.target.value)}
             />
-            <div className="create-project-application-list">
+            <div className={`create-project-application-list${visibleNewProjectApplications.length === 0 ? " is-empty" : ""}`}>
               {visibleNewProjectApplications.map((application) => {
                 const checked = newProjectApplicationIds.includes(application.id);
                 return (
