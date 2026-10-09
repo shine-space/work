@@ -196,7 +196,6 @@ const applicationRuntime = createApplicationRuntime();
 const argusRuntimeEnabled = applicationRuntime.kind === "argus";
 const argusRuntimeBaseUrl = import.meta.env.VITE_RUNTIME_BASE_URL || "/api";
 const argusWorkspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_argus_default";
-const argusDataReloadMarker = `${import.meta.url}:${Date.now()}`;
 const USER_PROJECTS_STORAGE_KEY = `argus-user-projects-v1:${argusWorkspaceId}`;
 const applicationStudioUrl = import.meta.env.VITE_APPLICATION_STUDIO_URL?.trim()
   || `${window.location.protocol}//${window.location.hostname}:5173/applications/studio`;
@@ -1546,6 +1545,8 @@ function ConversationWorkspace({
   const [projectList, setProjectList] = useState<Project[]>(argusRuntimeEnabled ? readUserProjects : () => projects);
   const [conversations, setConversations] = useState(argusRuntimeEnabled ? [] : initialConversations);
   const [argusDataLoaded, setArgusDataLoaded] = useState(!argusRuntimeEnabled);
+  const [argusDataReloadRevision, setArgusDataReloadRevision] = useState(0);
+  const argusDataErrorNotifiedRef = useRef(false);
   const [skillInstallations, setSkillInstallations] = useState<SkillInstallation[]>(readSkillInstallations);
   const [pathname, setPathname] = useState(() => {
     const initialLocation = getWorkspacePathname(window.location.pathname);
@@ -1583,6 +1584,7 @@ function ConversationWorkspace({
   useEffect(() => {
     if (!argusRuntimeEnabled) return;
     const controller = new AbortController();
+    let retryTimer: number | undefined;
     const userProjects = readUserProjects();
     applicationCatalog.splice(0, applicationCatalog.length);
     skillCatalog.splice(0, skillCatalog.length);
@@ -1594,6 +1596,7 @@ function ConversationWorkspace({
         setProjectList(realData.projects);
         setConversations(realData.conversations);
         setArgusDataLoaded(true);
+        argusDataErrorNotifiedRef.current = false;
       })
       .catch((reason) => {
         if (controller.signal.aborted) return;
@@ -1602,10 +1605,21 @@ function ConversationWorkspace({
         setProjectList(userProjects);
         setConversations([]);
         setArgusDataLoaded(true);
-        antMessage.error(reason instanceof Error ? reason.message : "管理端数据读取失败，请稍后重试。");
+        if (!argusDataErrorNotifiedRef.current) {
+          antMessage.error(reason instanceof Error ? reason.message : "管理端数据读取失败，将自动重试。");
+          argusDataErrorNotifiedRef.current = true;
+        }
+        if (hasArgusSession()) {
+          retryTimer = window.setTimeout(() => {
+            setArgusDataReloadRevision((current) => current + 1);
+          }, 5_000);
+        }
       });
-    return () => controller.abort();
-  }, [antMessage, argusDataReloadMarker]);
+    return () => {
+      controller.abort();
+      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
+    };
+  }, [antMessage, argusDataReloadRevision]);
 
   useEffect(() => {
     window.localStorage.setItem(SKILL_INSTALLATIONS_STORAGE_KEY, JSON.stringify(skillInstallations));
