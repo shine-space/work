@@ -150,7 +150,7 @@ import {
 import FolderFloat from "./components/FolderFloat";
 import { createApplicationRuntime, type RuntimeEvent } from "./runtime";
 import { hasArgusSession, loginArgus } from "./runtime/argus-api";
-import { loadArgusUserData, type ArgusBindingView, type ArgusUserData } from "./runtime/argus-data";
+import { loadArgusUserData, type ArgusBindingView, type ArgusSkillCatalogItem, type ArgusUserData } from "./runtime/argus-data";
 import { createTheme } from "./theme";
 
 const { Content } = Layout;
@@ -709,6 +709,9 @@ const skillIconCatalog = {
   calendar: CalendarDays,
   risk: ShieldAlert,
   translate: Languages,
+  file: FileText,
+  book: BookOpenCheck,
+  list: ListChecks,
 } as const;
 
 type SkillDefinition = {
@@ -719,6 +722,8 @@ type SkillDefinition = {
   icon: keyof typeof skillIconCatalog;
   iconColor: string;
   iconBackground: string;
+  capabilities?: string[];
+  usage?: string;
 };
 
 const skillCatalog: SkillDefinition[] = argusRuntimeEnabled ? [] : [
@@ -802,6 +807,60 @@ type CatalogApplication = {
   skills?: readonly string[];
 };
 
+const skillCapabilityFallbacks: Record<SkillCardCategory, string[]> = {
+  研究分析: ["提取关键信息", "核验来源与依据", "输出结构化结论"],
+  内容创作: ["理解目标与素材", "组织内容结构", "生成可继续编辑的结果"],
+  办公效率: ["整理任务上下文", "提取责任与行动", "生成可执行清单"],
+  数据处理: ["规范数据口径", "识别异常与趋势", "输出可复核结果"],
+};
+
+function inferRealSkillCategory(skill: ArgusSkillCatalogItem): SkillCardCategory {
+  const searchable = `${skill.name} ${skill.skill_id}`.toLocaleLowerCase();
+  if (["数据", "表格", "excel", "xlsx", "问数", "报表", "统计"].some((keyword) => searchable.includes(keyword))) return "数据处理";
+  if (["创作", "写作", "演示", "ppt", "文案"].some((keyword) => searchable.includes(keyword))) return "内容创作";
+  if (["会议", "纪要", "行动", "工单", "考勤", "周报", "任务", "跟进"].some((keyword) => searchable.includes(keyword))) return "办公效率";
+  return "研究分析";
+}
+
+function getRealSkillVisual(skill: ArgusSkillCatalogItem): Pick<SkillDefinition, "icon" | "iconColor" | "iconBackground"> {
+  const searchable = `${skill.name} ${skill.skill_id}`.toLocaleLowerCase();
+  const match = ([
+    { keywords: ["pdf"], icon: "file", background: "linear-gradient(135deg, #ff9b54 0%, #ff6f72 52%, #9a83ff 100%)" },
+    { keywords: ["word", "文档创作", "内容", "写作"], icon: "pen", background: "linear-gradient(45deg, #59c9d3 0%, #ff9c54 52%, #e97ac6 100%)" },
+    { keywords: ["表格", "电子表格", "excel", "xlsx"], icon: "table", background: "linear-gradient(315deg, #ff8f4c 0%, #4fcaa4 48%, #5fa5ea 100%)" },
+    { keywords: ["演示", "ppt", "幻灯片"], icon: "file", background: "linear-gradient(70deg, #f0b946 0%, #ff8848 48%, #e879c0 100%)" },
+    { keywords: ["会议", "纪要"], icon: "notes", background: "linear-gradient(215deg, #ff9c55 0%, #4fcbd2 48%, #6f89e8 100%)" },
+    { keywords: ["审阅", "校对", "审核"], icon: "review", background: "linear-gradient(145deg, #9dcc62 0%, #55c7a1 52%, #ff9851 100%)" },
+    { keywords: ["行动", "工单", "任务"], icon: "list", background: "linear-gradient(145deg, #8b87f4 0%, #4fc4d2 52%, #72c887 100%)" },
+    { keywords: ["考勤", "日程", "周报"], icon: "calendar", background: "linear-gradient(120deg, #ffb44f 0%, #ff7d67 52%, #ef82b7 100%)" },
+    { keywords: ["检索", "知识"], icon: "book", background: "linear-gradient(160deg, #ffd45c 0%, #ff8b4b 48%, #67b9ee 100%)" },
+    { keywords: ["文件"], icon: "scan", background: "linear-gradient(155deg, #72c6e8 0%, #7c8ff0 48%, #cf7ed9 100%)" },
+    { keywords: ["数据", "问数", "分析"], icon: "chart", background: "linear-gradient(25deg, #9a83ff 0%, #5ca7ef 48%, #ff9450 100%)" },
+  ] as const).find((visual) => visual.keywords.some((keyword) => searchable.includes(keyword)));
+  return {
+    icon: match?.icon ?? "telescope",
+    iconColor: "var(--ui-color-white)",
+    iconBackground: match?.background ?? "linear-gradient(135deg, #ff9b54 0%, #ff6f72 52%, #9a83ff 100%)",
+  };
+}
+
+function getRealSkillDefinition(skill: ArgusSkillCatalogItem): SkillDefinition {
+  const category = inferRealSkillCategory(skill);
+  const clauses = skill.description
+    .split(/[，。；]/u)
+    .map((clause) => clause.replace(/^并/u, "").trim())
+    .filter((clause) => clause.length >= 4 && clause.length <= 34);
+  return {
+    id: skill.skill_id,
+    name: skill.name,
+    category,
+    description: skill.description,
+    ...getRealSkillVisual(skill),
+    capabilities: [...new Set([...clauses, ...skillCapabilityFallbacks[category]])].slice(0, 3),
+    usage: skill.use_when?.trim() || `适用于需要${skill.name}能力的对话和工作任务。`,
+  };
+}
+
 const applicationCatalogSource: CatalogApplication[] = [
   { id: "senior-developer", name: "高级开发工程师", category: "技术研发", description: "解决复杂系统设计与技术攻坚问题，提升架构质量、研发效率和交付稳定性", cover: "/application-covers/01-高级开发工程师.png", avatar: "/application-avatars/01-高级开发工程师.png", contextId: "project" },
   { id: "senior-financial-analyst", name: "资深财务分析师", category: "数据分析", description: "分析财务表现与经营差异，优化预算预测、成本管控和管理决策质量", cover: "/application-covers/02-资深财务分析师.png", avatar: "/application-avatars/02-资深财务分析师.png", contextId: "project" },
@@ -880,6 +939,7 @@ function applyArgusUserData(data: ArgusUserData, userProjects: Project[]) {
   ));
   const realCatalog = usableBindings.map(getRealCatalogApplication);
   applicationCatalog.splice(0, applicationCatalog.length, ...realCatalog);
+  skillCatalog.splice(0, skillCatalog.length, ...data.skills.map(getRealSkillDefinition));
 
   const catalogByBinding = new Map(realCatalog.map((item) => [item.id, item]));
   const projectIds = new Set(userProjects.map((project) => project.id));
@@ -1501,6 +1561,7 @@ function ConversationWorkspace({
     const controller = new AbortController();
     const userProjects = readUserProjects();
     applicationCatalog.splice(0, applicationCatalog.length);
+    skillCatalog.splice(0, skillCatalog.length);
     setProjectList(userProjects);
     void loadArgusUserData(argusRuntimeBaseUrl, argusWorkspaceId, controller.signal)
       .then((data) => {
@@ -1512,6 +1573,7 @@ function ConversationWorkspace({
       .catch((reason) => {
         if (controller.signal.aborted) return;
         applicationCatalog.splice(0, applicationCatalog.length);
+        skillCatalog.splice(0, skillCatalog.length);
         setProjectList(userProjects);
         setConversations([]);
         setArgusDataLoaded(true);
@@ -5951,7 +6013,10 @@ function SkillDetailModal({
 }) {
   if (!skill) return null;
   const SkillIcon = skillIconCatalog[skill.icon];
-  const detail = skillDetailCatalog[skill.id];
+  const detail = skillDetailCatalog[skill.id] ?? {
+    capabilities: skill.capabilities ?? skillCapabilityFallbacks[skill.category],
+    usage: skill.usage ?? `适用于需要${skill.name}能力的对话和工作任务。`,
+  };
 
   return (
     <Modal

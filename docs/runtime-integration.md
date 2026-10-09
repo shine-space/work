@@ -2,8 +2,8 @@
 
 The user-facing workspace depends on the `ApplicationRuntime` contract in
 `src/runtime/types.ts`, not on an Agent vendor response or an Argus management
-DTO. The default `MockApplicationRuntime` keeps the preview deterministic. An
-Two real-service adapters are available:
+DTO. The default `MockApplicationRuntime` keeps the preview deterministic. Two
+real-service adapters are available:
 
 - `VITE_RUNTIME_MODE=argus` calls the existing formal Argus Application
   binding and representative command APIs. This is the first integration
@@ -34,6 +34,13 @@ The adapter resolves the participant's original application name against
 The last command ID is stored per local conversation and sent as
 `previous_command_id` after reload. Renaming a digital employee does not change
 the management-side application name used for binding resolution.
+
+In the same startup load, the user-facing Skill directory reads
+`/api/skills/catalog` for the current `VITE_ARGUS_WORKSPACE_ID`. Names,
+descriptions and usage guidance therefore come from the management-side
+available-capability catalog. The four visible categories use the same
+name/Skill-ID classification rules as the management UI; no demo Skill catalog
+is used in Argus mode.
 
 This mode intentionally rejects project fan-out and raw local attachments.
 Project conversations must use the project Agent contract; attachments must be

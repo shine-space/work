@@ -42,9 +42,29 @@ export type ArgusCommandView = {
   employee_turns?: ArgusEmployeeTurn[];
 };
 
+export type ArgusSkillCatalogItem = {
+  skill_id: string;
+  name: string;
+  description: string;
+  use_when: string;
+  source_status: string;
+  readiness: {
+    ready: boolean;
+    status?: "ready" | "needs_configuration" | "unavailable" | "check_on_use";
+    reason?: string;
+  };
+};
+
+type ArgusSkillCatalog = {
+  items: ArgusSkillCatalogItem[];
+  has_more?: boolean;
+  next_cursor?: string;
+};
+
 export type ArgusUserData = {
   bindings: ArgusBindingView[];
   work: Array<ArgusWorkItem & { detail: ArgusCommandView }>;
+  skills: ArgusSkillCatalogItem[];
 };
 
 async function readAll<T>(
@@ -61,7 +81,7 @@ async function readAll<T>(
 }
 
 export async function loadArgusUserData(baseUrl: string, workspaceId: string, signal: AbortSignal): Promise<ArgusUserData> {
-  const [bindings, workItems] = await Promise.all([
+  const [bindings, workItems, skillCatalog] = await Promise.all([
     readAll((cursor) => requestArgusJson<{ items: ArgusBindingView[]; next_cursor?: string }>(
       baseUrl,
       "/v1/applications/participation-bindings/list",
@@ -74,6 +94,12 @@ export async function loadArgusUserData(baseUrl: string, workspaceId: string, si
       { workspace_id: workspaceId, cursor, limit: 100 },
       signal,
     )),
+    requestArgusJson<ArgusSkillCatalog>(
+      baseUrl,
+      "/skills/catalog",
+      { workspace_id: workspaceId, limit: 200 },
+      signal,
+    ),
   ]);
 
   const employeeWork = workItems.filter((item) => item.purpose === "employee");
@@ -86,5 +112,5 @@ export async function loadArgusUserData(baseUrl: string, workspaceId: string, si
       signal,
     ),
   })));
-  return { bindings, work };
+  return { bindings, work, skills: skillCatalog.items };
 }
