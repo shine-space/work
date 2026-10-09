@@ -13,7 +13,7 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://127.0.0.1:5173`.
+Open `http://127.0.0.1:5174`.
 
 Copy `.env.example` to `.env.local` when the application-building workspace is
 hosted separately, then set `VITE_APPLICATION_STUDIO_URL` to its full URL.
@@ -41,9 +41,8 @@ normalized event contract without coupling page components to internal DTOs.
 
 - The model response is a deterministic local stream; no credentials or remote
   model service are required.
-- Application, project, Agent, project/conversation rename, delete and conversation attachment selection are
-  prototype state only and reset on reload. Seeded project and conversation URLs
-  remain directly addressable.
+- User-created projects and their configuration persist per workspace in browser storage.
+- Conversation rename, removal and attachment selection remain prototype state unless backed by an Argus command record.
 - Work-file folders and uploads are the exception: they persist locally in the current browser and do not call an Argus file API.
 - `src/theme-assets/` contains the theme, typography and radius snapshots needed
   to run this project independently from the Argus monorepo.

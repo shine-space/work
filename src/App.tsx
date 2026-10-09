@@ -198,6 +198,8 @@ const argusRuntimeBaseUrl = import.meta.env.VITE_RUNTIME_BASE_URL || "/api";
 const argusWorkspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_argus_default";
 const argusDataReloadMarker = `${import.meta.url}:${Date.now()}`;
 const USER_PROJECTS_STORAGE_KEY = `argus-user-projects-v1:${argusWorkspaceId}`;
+const applicationStudioUrl = import.meta.env.VITE_APPLICATION_STUDIO_URL?.trim()
+  || `${window.location.protocol}//${window.location.hostname}:5173/applications/studio`;
 
 function readUserProjects(): Project[] {
   try {
@@ -1403,7 +1405,7 @@ function ArgusLoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) 
     <main className="runtime-login-page">
       <section className="runtime-login-card" aria-labelledby="runtime-login-title">
         <img src={getPublicAssetPath("logo-collapsed.png")} alt="" aria-hidden="true" />
-        <div><Title id="runtime-login-title" level={3}>登录朝夕智能</Title><Text type="secondary">使用管理端账号读取已授权的数字员工、项目和对话。</Text></div>
+        <div><Title id="runtime-login-title" level={3}>登录朝夕智能</Title><Text type="secondary">使用管理端账号读取已授权的数字员工与工作记录。</Text></div>
         {error ? <div className="runtime-login-error" role="alert">{error}</div> : null}
         <Form layout="vertical" onFinish={submit} requiredMark={false}>
           <Form.Item label="邮箱" name="email" rules={[{ required: true, message: "请输入邮箱" }]}>
@@ -2525,7 +2527,7 @@ function ConversationWorkspace({
       ?? activeProjectList.find((item) => item.id === projectId)
       ?? activeProjectList[0];
     if (!project) {
-      antMessage.warning("当前没有可用的群组项目，请先在管理端创建或授权群组项目。");
+      antMessage.warning("当前没有可用的群组项目，请先在用户端创建群组项目。");
       return;
     }
     const projectAgent =
@@ -8977,7 +8979,7 @@ function ConversationNavigation({
     setNavigationMode(value);
     if (value === "app-builder") {
       window.setTimeout(() => {
-        window.location.assign(import.meta.env.VITE_APPLICATION_STUDIO_URL || "/applications/studio");
+        window.location.assign(applicationStudioUrl);
       }, reduceMotion ? 0 : 240);
     }
   };
