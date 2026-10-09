@@ -14,6 +14,8 @@ export type RuntimeParticipant = {
   avatar?: string;
   contextId?: string;
   contextLabel?: string;
+  /** Stable management-side application name used to resolve a real binding. */
+  backendApplicationName?: string;
 };
 
 export type RuntimeTarget = {
@@ -67,7 +69,7 @@ export type RuntimeEvent = RuntimeEventEnvelope & (
 export type RuntimeEventHandler = (event: RuntimeEvent) => void;
 
 export interface ApplicationRuntime {
-  readonly kind: "mock" | "http";
+  readonly kind: "mock" | "http" | "argus";
   run(
     request: RuntimeRunRequest,
     options: { signal: AbortSignal; onEvent: RuntimeEventHandler },

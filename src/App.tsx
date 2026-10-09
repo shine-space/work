@@ -1773,6 +1773,15 @@ function ConversationWorkspace({
               avatar: participant.avatar,
               contextId: responders[index]?.applicationId,
               contextLabel: applicationMeta[responders[index]?.applicationId ?? "none"].label,
+              backendApplicationName: (() => {
+                const catalogApplication = applicationCatalog.find(
+                  (application) => application.id === responders[index]?.catalogApplicationId,
+                );
+                if (targetApplication?.id === catalogApplication?.id) {
+                  return targetApplication?.originalName ?? targetApplication?.name;
+                }
+                return catalogApplication?.originalName ?? catalogApplication?.name ?? participant.name;
+              })(),
             })),
             target: {
               id: taskIdentity.targetId,

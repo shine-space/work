@@ -3,8 +3,13 @@
 The user-facing workspace depends on the `ApplicationRuntime` contract in
 `src/runtime/types.ts`, not on an Agent vendor response or an Argus management
 DTO. The default `MockApplicationRuntime` keeps the preview deterministic. An
-HTTP backend can be selected with `VITE_RUNTIME_MODE=http` after it implements
-the normalized contract.
+Two real-service adapters are available:
+
+- `VITE_RUNTIME_MODE=argus` calls the existing formal Argus Application
+  binding and representative command APIs. This is the first integration
+  stage: one digital employee, non-streaming response, real authorization and
+  durable command continuation.
+- `VITE_RUNTIME_MODE=http` selects the future normalized streaming contract.
 
 ## Responsibilities
 
@@ -15,6 +20,26 @@ the normalized contract.
 - The backend owns authorization, durable messages, execution state,
   idempotency, cancellation, approvals, artifacts and recovery after reload.
 - Secrets must never use a `VITE_` variable or enter the browser bundle.
+
+## Existing Argus command mode
+
+Set `VITE_RUNTIME_MODE=argus`, `VITE_RUNTIME_BASE_URL=/api` and
+`VITE_ARGUS_WORKSPACE_ID` to the authorized workspace ID. The user client and
+management UI must share an origin (or an equivalent trusted auth handoff) so
+the client can reuse the existing `argus.access_token` and refresh token.
+
+The adapter resolves the participant's original application name against
+`/api/v1/applications/participation-bindings/list`, then calls
+`/api/v1/applications/representative/run` with the active binding revision.
+The last command ID is stored per local conversation and sent as
+`previous_command_id` after reload. Renaming a digital employee does not change
+the management-side application name used for binding resolution.
+
+This mode intentionally rejects project fan-out and raw local attachments.
+Project conversations must use the project Agent contract; attachments must be
+uploaded first and represented by durable server file references. Local abort
+does not claim to cancel a durable backend run because the current formal
+Application Command contract has no matching cancellation operation.
 
 ## Run request
 
@@ -51,9 +76,10 @@ types instead of exposing internal DTOs to UI components.
 ## Migration sequence
 
 1. Keep `VITE_RUNTIME_MODE=mock` while UI behavior is verified.
-2. Add the server-side ApplicationCommand streaming endpoint.
-3. Map durable command/run identifiers to `run.started` and support the cancel
+2. Use `argus` mode for the first real, non-streaming single-employee loop.
+3. Add the server-side ApplicationCommand streaming endpoint.
+4. Map durable command/run identifiers to `run.started` and support the cancel
    route.
-4. Add idempotency, event cursors and reload recovery before enabling the HTTP
+5. Add idempotency, event cursors and reload recovery before enabling the HTTP
    runtime by default.
-5. Add attachment upload references, approvals and artifacts incrementally.
+6. Add attachment upload references, approvals and artifacts incrementally.
