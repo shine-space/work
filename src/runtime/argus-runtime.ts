@@ -20,6 +20,9 @@ type BindingView = {
     participation_binding_revision_id: string;
     enabled: boolean;
   };
+  deployment_revision: {
+    application_id: string;
+  };
 };
 
 type CommandView = {
@@ -66,7 +69,9 @@ export class ArgusApplicationRuntime implements ApplicationRuntime {
     const participant = request.participants[0];
     const applicationName = participant.backendApplicationName?.trim() || participant.name.trim();
     const candidates = (await this.listBindings(signal)).filter((item) => (
-      item.application_name === applicationName
+      (participant.backendApplicationId
+        ? item.deployment_revision.application_id === participant.backendApplicationId
+        : item.application_name === applicationName)
       && item.available
       && item.binding.enabled
       && item.revision.enabled

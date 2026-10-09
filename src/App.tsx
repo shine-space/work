@@ -150,7 +150,7 @@ import {
 import FolderFloat from "./components/FolderFloat";
 import { createApplicationRuntime, type RuntimeEvent } from "./runtime";
 import { hasArgusSession, loginArgus } from "./runtime/argus-api";
-import { loadArgusUserData, type ArgusBindingView, type ArgusSkillCatalogItem, type ArgusUserData } from "./runtime/argus-data";
+import { loadArgusUserData, type ArgusBindingView, type ArgusCatalogApplication, type ArgusSkillCatalogItem, type ArgusUserData } from "./runtime/argus-data";
 import { createTheme } from "./theme";
 
 const { Content } = Layout;
@@ -805,6 +805,7 @@ type CatalogApplication = {
   avatar: string;
   contextId: ApplicationId;
   skills?: readonly string[];
+  available?: boolean;
 };
 
 const skillCapabilityFallbacks: Record<SkillCardCategory, string[]> = {
@@ -890,32 +891,33 @@ const applicationCatalog: CatalogApplication[] = (argusRuntimeEnabled ? [] : app
   avatar: getPublicAssetPath(application.avatar),
 }));
 
-function getRealCatalogApplication(binding: ArgusBindingView): CatalogApplication {
-  const template = applicationCatalogSource.find((item) => item.name === binding.application_name);
-  const representative = binding.manifest.representatives?.find((item) => item.primary)
-    ?? binding.manifest.representatives?.[0];
-  const configuredCategory = binding.manifest.category?.trim();
+function getRealCatalogApplication(application: ArgusCatalogApplication, binding?: ArgusBindingView): CatalogApplication {
+  const template = applicationCatalogSource.find((item) => item.name === application.name);
+  const representative = application.manifest.representatives?.find((item) => item.primary)
+    ?? application.manifest.representatives?.[0];
+  const configuredCategory = application.manifest.category?.trim();
   const category = applicationCategories.includes(configuredCategory as ApplicationCategory)
     && configuredCategory !== "全部"
     ? configuredCategory as ApplicationCardCategory
     : template?.category ?? "知识研究";
   const fallbackAsset = applicationCatalogSource[applicationCatalogSource.length - 1];
   return {
-    id: binding.binding.participation_binding_id,
-    name: representative?.name?.trim() || binding.application_name,
-    originalName: binding.application_name,
+    id: application.application_id,
+    name: application.name,
+    originalName: application.name,
     category,
-    description: binding.manifest.description?.trim()
+    description: application.manifest.description?.trim()
       || representative?.description?.trim()
       || template?.description
       || "由管理端发布并授权的数字员工",
     cover: getPublicAssetPath(template?.cover ?? fallbackAsset.cover),
     avatar: getPublicAssetPath(template?.avatar ?? fallbackAsset.avatar),
     contextId: "conversation",
-    skills: (binding.manifest.capabilities ?? [])
+    skills: (application.manifest.capabilities ?? [])
       .map((capability) => capability.title?.trim() || capability.key.trim())
       .filter(Boolean)
       .slice(0, 3),
+    available: Boolean(binding),
   };
 }
 
@@ -937,12 +939,34 @@ function applyArgusUserData(data: ArgusUserData, userProjects: Project[]) {
     && item.access?.executable !== false
     && Boolean(item.manifest.representatives?.length)
   ));
-  const realCatalog = usableBindings.map(getRealCatalogApplication);
+  const bindingByApplication = new Map<string, ArgusBindingView>();
+  usableBindings.forEach((binding) => {
+    const applicationId = binding.deployment_revision.application_id;
+    const current = bindingByApplication.get(applicationId);
+    if (!current || (current.binding.scope_type !== "workspace" && binding.binding.scope_type === "workspace")) {
+      bindingByApplication.set(applicationId, binding);
+    }
+  });
+  const realCatalog = data.applications.map((application) => (
+    getRealCatalogApplication(application, bindingByApplication.get(application.application_id))
+  ));
   applicationCatalog.splice(0, applicationCatalog.length, ...realCatalog);
   skillCatalog.splice(0, skillCatalog.length, ...data.skills.map(getRealSkillDefinition));
 
-  const catalogByBinding = new Map(realCatalog.map((item) => [item.id, item]));
-  const projectIds = new Set(userProjects.map((project) => project.id));
+  const catalogByApplication = new Map(realCatalog.map((item) => [item.id, item]));
+  const catalogByBinding = new Map(usableBindings.flatMap((binding) => {
+    const catalog = catalogByApplication.get(binding.deployment_revision.application_id);
+    return catalog ? [[binding.binding.participation_binding_id, catalog] as const] : [];
+  }));
+  const applicationIdByBinding = new Map(usableBindings.map((binding) => (
+    [binding.binding.participation_binding_id, binding.deployment_revision.application_id] as const
+  )));
+  const migratedProjects = userProjects.map((project) => ({
+    ...project,
+    applicationIds: project.applicationIds?.map((id) => applicationIdByBinding.get(id) ?? id),
+  }));
+  if (JSON.stringify(migratedProjects) !== JSON.stringify(userProjects)) saveUserProjects(migratedProjects);
+  const projectIds = new Set(migratedProjects.map((project) => project.id));
   const realConversations: Conversation[] = data.work
     .filter((item) => catalogByBinding.has(item.participation_binding_id))
     .filter((item) => item.scope_type !== "project" || projectIds.has(item.scope_id))
@@ -983,7 +1007,7 @@ function applyArgusUserData(data: ArgusUserData, userProjects: Project[]) {
         messages,
       };
     });
-  return { conversations: realConversations };
+  return { conversations: realConversations, projects: migratedProjects };
 }
 
 const applicationSkillTags: Record<CatalogApplication["id"], readonly [string, string, string]> = {
@@ -1567,6 +1591,7 @@ function ConversationWorkspace({
       .then((data) => {
         if (controller.signal.aborted) return;
         const realData = applyArgusUserData(data, userProjects);
+        setProjectList(realData.projects);
         setConversations(realData.conversations);
         setArgusDataLoaded(true);
       })
@@ -2115,6 +2140,7 @@ function ConversationWorkspace({
                 }
                 return catalogApplication?.originalName ?? catalogApplication?.name ?? participant.name;
               })(),
+              backendApplicationId: responders[index]?.catalogApplicationId ?? undefined,
             })),
             target: {
               id: taskIdentity.targetId,
@@ -6102,6 +6128,7 @@ function DigitalEmployeeDetailModal({
           <Button
             type="primary"
             block
+            disabled={!conversation && application.available === false}
             onClick={() => {
               onClose();
               if (conversation) {
@@ -6111,7 +6138,7 @@ function DigitalEmployeeDetailModal({
               onCreate(application);
             }}
           >
-            {conversation ? "发起对话" : "创建"}
+            {conversation ? "发起对话" : application.available === false ? "尚未启用" : "创建"}
           </Button>
         </div>
       )}
@@ -7010,19 +7037,24 @@ function ApplicationsHome({
                       >
                         查看详情
                       </button>
-                      <button
-                        className="application-card-action-primary"
-                        type="button"
-                        onClick={() => {
-                          if (createdConversation) {
-                            onOpenConversation(createdConversation.id);
-                            return;
-                          }
-                          setCreatingApplication(application);
-                        }}
-                      >
-                        {createdConversation ? "发起对话" : "创建"}
-                      </button>
+                      <Tooltip title={application.available === false ? "管理端已发布，但尚未启用运行入口" : undefined}>
+                        <span>
+                          <button
+                            className="application-card-action-primary"
+                            type="button"
+                            disabled={!createdConversation && application.available === false}
+                            onClick={() => {
+                              if (createdConversation) {
+                                onOpenConversation(createdConversation.id);
+                                return;
+                              }
+                              setCreatingApplication(application);
+                            }}
+                          >
+                            {createdConversation ? "发起对话" : application.available === false ? "尚未启用" : "创建"}
+                          </button>
+                        </span>
+                      </Tooltip>
                     </span>
                   </article>
                   );

@@ -17,6 +17,22 @@ export type ArgusBindingView = {
     enabled: boolean;
   };
   revision: { participation_binding_revision_id: string; enabled: boolean };
+  deployment_revision: { application_id: string; application_version_id: string };
+};
+
+export type ArgusCatalogApplication = {
+  application_id: string;
+  name: string;
+  team_id?: string;
+  current_version: number;
+  version_id: string;
+  published_at: string;
+  manifest: {
+    category?: string;
+    description?: string;
+    capabilities?: Array<{ title?: string; key: string }>;
+    representatives?: Array<{ name: string; description?: string; primary: boolean }>;
+  };
 };
 
 export type ArgusWorkItem = {
@@ -62,6 +78,7 @@ type ArgusSkillCatalog = {
 };
 
 export type ArgusUserData = {
+  applications: ArgusCatalogApplication[];
   bindings: ArgusBindingView[];
   work: Array<ArgusWorkItem & { detail: ArgusCommandView }>;
   skills: ArgusSkillCatalogItem[];
@@ -81,13 +98,19 @@ async function readAll<T>(
 }
 
 export async function loadArgusUserData(baseUrl: string, workspaceId: string, signal: AbortSignal): Promise<ArgusUserData> {
-  const [bindings, workItems, skillCatalog] = await Promise.all([
+  const [applications, bindings, workItems, skillCatalog] = await Promise.all([
+    readAll((cursor) => requestArgusJson<{ items: ArgusCatalogApplication[]; next_cursor?: string }>(
+      baseUrl,
+      "/v1/applications/catalog/list",
+      { workspace_id: workspaceId, cursor, limit: 100 },
+      signal,
+    )),
     readAll((cursor) => requestArgusJson<{ items: ArgusBindingView[]; next_cursor?: string }>(
       baseUrl,
       "/v1/applications/participation-bindings/list",
       { workspace_id: workspaceId, cursor, limit: 100 },
       signal,
-    )),
+    )).catch(() => []),
     readAll((cursor) => requestArgusJson<{ items: ArgusWorkItem[]; next_cursor?: string }>(
       baseUrl,
       "/v1/applications/commands/work",
@@ -112,5 +135,5 @@ export async function loadArgusUserData(baseUrl: string, workspaceId: string, si
       signal,
     ),
   })));
-  return { bindings, work, skills: skillCatalog.items };
+  return { applications, bindings, work, skills: skillCatalog.items };
 }

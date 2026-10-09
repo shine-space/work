@@ -16,6 +16,8 @@ export type RuntimeParticipant = {
   contextLabel?: string;
   /** Stable management-side application name used to resolve a real binding. */
   backendApplicationName?: string;
+  /** Stable management-side application ID used to avoid ambiguous names. */
+  backendApplicationId?: string;
 };
 
 export type RuntimeTarget = {
