@@ -869,6 +869,7 @@ function applyArgusUserData(data: ArgusUserData) {
       description: space.description || space.goal || "",
       applicationIds,
       administratorApplicationId: applicationIds[0],
+      archived: space.status.trim().toLocaleLowerCase() === "archived",
     };
   });
   const realConversations: Conversation[] = data.work
@@ -1343,6 +1344,12 @@ export default function App() {
   );
 
   useEffect(() => {
+    const handleInvalidSession = () => setArgusSessionVersion((value) => value + 1);
+    window.addEventListener("argus:auth-invalid", handleInvalidSession);
+    return () => window.removeEventListener("argus:auth-invalid", handleInvalidSession);
+  }, []);
+
+  useEffect(() => {
     window.localStorage.setItem("argus-sidebar-collapsed", String(sidebarCollapsed));
   }, [sidebarCollapsed]);
 
@@ -1442,6 +1449,7 @@ function ConversationWorkspace({
   const reduceTaskIslandMotion = useReducedMotion();
   const [projectList, setProjectList] = useState<Project[]>(argusRuntimeEnabled ? [] : projects);
   const [conversations, setConversations] = useState(argusRuntimeEnabled ? [] : initialConversations);
+  const [argusDataLoaded, setArgusDataLoaded] = useState(!argusRuntimeEnabled);
   const [skillInstallations, setSkillInstallations] = useState<SkillInstallation[]>(readSkillInstallations);
   const [pathname, setPathname] = useState(() => {
     const initialLocation = getWorkspacePathname(window.location.pathname);
@@ -1478,12 +1486,14 @@ function ConversationWorkspace({
         const realData = applyArgusUserData(data);
         setProjectList(realData.projects);
         setConversations(realData.conversations);
+        setArgusDataLoaded(true);
       })
       .catch((reason) => {
         if (controller.signal.aborted) return;
         applicationCatalog.splice(0, applicationCatalog.length);
         setProjectList([]);
         setConversations([]);
+        setArgusDataLoaded(true);
         antMessage.error(reason instanceof Error ? reason.message : "管理端数据读取失败，请稍后重试。");
       });
     return () => controller.abort();
@@ -1519,8 +1529,45 @@ function ConversationWorkspace({
     setPathname(nextPath);
   }, []);
 
-  const route = parseWorkspaceRoute(pathname);
+  const route = useMemo(() => parseWorkspaceRoute(pathname), [pathname]);
   const isStandaloneConversation = route.page === "standalone";
+  const activeProjectList = useMemo(
+    () => projectList.filter((project) => !project.archived),
+    [projectList],
+  );
+  const archivedProjectList = useMemo(
+    () => projectList.filter((project) => project.archived),
+    [projectList],
+  );
+
+  useEffect(() => {
+    if (!argusRuntimeEnabled || !argusDataLoaded) return;
+    if (route.page === "standalone") {
+      const exists = conversations.some((conversation) => (
+        conversation.id === route.conversationId && conversation.projectId === null
+      ));
+      if (!exists) navigateTo("/apps");
+      return;
+    }
+    if (route.page === "project" || route.page === "conversation") {
+      const projectExists = activeProjectList.some((project) => project.id === route.projectId);
+      if (!projectExists) {
+        navigateTo("/overview");
+        return;
+      }
+      if (route.page === "conversation") {
+        const conversationExists = conversations.some((conversation) => (
+          conversation.id === route.conversationId && conversation.projectId === route.projectId
+        ));
+        if (!conversationExists) navigateTo(`/projects/${route.projectId}`);
+      }
+      return;
+    }
+    if (route.page === "archiveProject") {
+      const exists = archivedProjectList.some((project) => project.id === route.projectId);
+      if (!exists) navigateTo("/archive");
+    }
+  }, [argusDataLoaded, archivedProjectList, conversations, navigateTo, route, activeProjectList]);
   const projectHomeVisible = false;
   const projectFilesOpen = projectWorkspaceTool === "files";
   const setProjectFilesOpen = useCallback((open: boolean) => {
@@ -1532,11 +1579,11 @@ function ConversationWorkspace({
   }, [route.page]);
 
   const activeProject =
-    projectList.find(
+    activeProjectList.find(
       (project) =>
         (route.page === "project" || route.page === "conversation") &&
         project.id === route.projectId,
-    ) ?? projectList[0] ?? emptyProject;
+    ) ?? activeProjectList[0] ?? emptyProject;
   const standaloneConversations = conversations.filter((conversation) => conversation.projectId === null);
   const projectConversations = conversations.filter(
     (conversation) => conversation.projectId === activeProject.id,
@@ -2455,7 +2502,13 @@ function ConversationWorkspace({
     catalogApplicationId: string | null = null,
     projectOverride?: Project,
   ) => {
-    const project = projectOverride ?? projectList.find((item) => item.id === projectId) ?? projectList[0];
+    const project = projectOverride
+      ?? activeProjectList.find((item) => item.id === projectId)
+      ?? activeProjectList[0];
+    if (!project) {
+      antMessage.warning("当前没有可用的群组项目，请先在管理端创建或授权群组项目。");
+      return;
+    }
     const projectAgent =
       agents.find((item) => project.agentIds?.includes(item.id)) ??
       agents.find((item) =>
@@ -2580,7 +2633,7 @@ function ConversationWorkspace({
   };
 
   const selectConversationTargetProject = (projectId: string) => {
-    const project = projectList.find((item) => item.id === projectId);
+    const project = activeProjectList.find((item) => item.id === projectId);
     if (!project) return;
     setPendingConversationTarget({
       conversationId: activeConversation.id,
@@ -2704,7 +2757,13 @@ function ConversationWorkspace({
       okText: "归档",
       okButtonProps: { danger: true },
       cancelText: "取消",
-      onOk: () => antMessage.success("群组项目已归档"),
+      onOk: () => {
+        setProjectList((current) => current.map((item) => (
+          item.id === project.id ? { ...item, archived: true } : item
+        )));
+        navigateTo("/archive");
+        antMessage.success("群组项目已归档");
+      },
     });
   };
 
@@ -2792,7 +2851,7 @@ function ConversationWorkspace({
       conversations={conversations}
       conversationTasks={taskList}
       viewedTaskVersions={viewedTaskVersions}
-      projects={projectList}
+      projects={activeProjectList}
       onCreateProject={createProject}
       onCreateStandaloneConversation={createStandaloneConversation}
       onDelete={removeConversationFromList}
@@ -2848,7 +2907,7 @@ function ConversationWorkspace({
               {route.page === "overview" ? (
                 <OverviewHome
                   conversations={conversations}
-                  projects={projectList}
+                  projects={activeProjectList}
                   tasks={taskList}
                   onOpenConversation={switchConversation}
                 />
@@ -2863,14 +2922,14 @@ function ConversationWorkspace({
                   )}
                 />
               ) : route.page === "archive" ? (
-                <ArchiveHome projects={projectList} onProjectOpen={openArchivedProject} />
+                <ArchiveHome projects={archivedProjectList} onProjectOpen={openArchivedProject} />
               ) : route.page === "applications" ? (
                   <ApplicationsHome
                     conversations={conversations}
                     onLaunch={launchStandaloneApplication}
                     onOpenConversation={switchConversation}
                     onInstallSkill={installSkill}
-                    projects={projectList}
+                    projects={activeProjectList}
                     skillInstallations={skillInstallations}
                   />
               ) : route.page === "project" && projectHomeVisible ? (
@@ -2922,6 +2981,10 @@ function ConversationWorkspace({
                         return;
                       }
                       const application = activeProjectCatalogApplications[0] ?? applicationCatalog[0];
+                      if (!application) {
+                        antMessage.warning("当前没有可用的数字员工，请先在管理端创建并授权数字员工。");
+                        return;
+                      }
                       createProjectConversation(
                         activeProject.id,
                         task.title,
@@ -2940,6 +3003,10 @@ function ConversationWorkspace({
                       const application = activeProjectCatalogApplications.find((item) => item.id === catalogApplicationId)
                         ?? activeProjectCatalogApplications[0]
                         ?? applicationCatalog[0];
+                      if (!application) {
+                        antMessage.warning("当前没有可用的数字员工，请先在管理端创建并授权数字员工。");
+                        return;
+                      }
                       createProjectConversation(
                         activeProject.id,
                         prompt,
@@ -3186,7 +3253,7 @@ function ConversationWorkspace({
                             ))
                           : selectableCatalogApplications}
                       availableApplications={getCreatedDigitalEmployees(conversations)}
-                      availableProjects={projectList}
+                      availableProjects={activeProjectList}
                       enableApplicationMentions={Boolean(pendingTargetProject) || !isStandaloneConversation}
                       resourceFiles={pendingTargetProject
                         ? generatedFiles.filter((file) => file.projectId === pendingTargetProject.id)
@@ -6202,7 +6269,11 @@ function ArchiveHome({
         <Typography.Title id="archive-page-title" level={2}>归档</Typography.Title>
       </header>
       <section className="archive-projects" aria-label="已归档的群组项目">
-        <div className="archive-project-list">
+        {archivedProjects.length === 0 ? (
+          <div className="archive-project-empty">
+            <Empty description="暂无已归档的群组项目" />
+          </div>
+        ) : <div className="archive-project-list">
           {archivedProjects.map((project) => {
             const applicationNames = getProjectCatalogApplications(project)
               .map((application) => application.name);
@@ -6243,7 +6314,7 @@ function ArchiveHome({
               </article>
             );
           })}
-        </div>
+        </div>}
       </section>
     </section>
   );
@@ -8045,7 +8116,7 @@ function ProjectHome({
   const [managedApplicationCategory, setManagedApplicationCategory] = useState<ApplicationCategory>("全部");
   const projectCatalogApplications = getProjectCatalogApplications(project);
   const [starterCatalogApplicationId, setStarterCatalogApplicationId] = useState(
-    () => projectCatalogApplications[0]?.id ?? applicationCatalog[0].id,
+    () => projectCatalogApplications[0]?.id ?? applicationCatalog[0]?.id ?? "",
   );
   const activities = projectActivities.filter((activity) => activity.projectId === project.id);
   const tasks = projectTasks.filter((task) => task.projectId === project.id);
@@ -8092,6 +8163,10 @@ function ProjectHome({
     const selectedApplication = projectCatalogApplications.find(
       (application) => application.id === starterCatalogApplicationId,
     ) ?? projectCatalogApplications[0] ?? applicationCatalog[0];
+    if (!selectedApplication) {
+      antMessage.warning("当前没有可用的数字员工，请先在管理端创建并授权数字员工。");
+      return;
+    }
     onStartConversation(prompt, selectedApplication.id);
     setStarterPrompt("");
   };

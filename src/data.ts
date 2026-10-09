@@ -28,6 +28,7 @@ export type Project = {
   agentIds?: string[];
   applicationIds?: string[];
   administratorApplicationId?: string;
+  archived?: boolean;
 };
 
 export type GeneratedFile = {

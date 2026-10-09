@@ -2905,6 +2905,7 @@ padding: 16px;
 .archive-projects { margin-left:4px; }
 .archive-projects > h3 { margin: 0 0 16px; color: var(--ant-color-text); font-size: 16px; font-weight: 500; line-height: 24px; }
 .archive-project-list { display: flex; padding-top: 48px; flex-wrap: wrap; align-items: flex-start; justify-content: flex-start; gap: 68px; }
+.archive-project-empty { min-height: calc(100vh - 190px); display: grid; place-items: center; }
 .archive-project-item { position: relative; display: flex; min-width: 0; min-height: 130px; flex: 0 0 160px; justify-content: flex-start; overflow: visible; }
 .archive-project-item:hover, .archive-project-item:focus-within { z-index: 2; }
 .archive-project-item .folder-float { transform: scale(.8); transform-origin: top left; }
@@ -3221,6 +3222,7 @@ padding: 16px;
 @media (max-width: 560px) {
   .application-card { height: 304px; }
   .application-card-details { height: 164px; }
+  .application-card-tags { overflow: visible; flex-wrap: wrap; align-content: flex-end; }
   .skill-grid.is-marketplace .skill-card-action { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
 }
 
