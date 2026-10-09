@@ -198,6 +198,7 @@ const argusRuntimeBaseUrl = import.meta.env.VITE_RUNTIME_BASE_URL || "/api";
 const argusWorkspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_argus_default";
 const USER_PROJECTS_STORAGE_KEY = `argus-user-projects-v1:${argusWorkspaceId}`;
 const HIDDEN_NAVIGATION_STORAGE_KEY = `argus:hidden-navigation-keys:${argusWorkspaceId}`;
+const DELETED_CONVERSATIONS_STORAGE_KEY = `argus:deleted-conversation-ids:${argusWorkspaceId}`;
 const applicationStudioUrl = import.meta.env.VITE_APPLICATION_STUDIO_URL?.trim()
   || `${window.location.protocol}//${window.location.hostname}:5173/applications/studio`;
 
@@ -231,6 +232,21 @@ function readHiddenNavigationKeys(): string[] {
   } catch {
     return [];
   }
+}
+
+function readDeletedConversationIds(): string[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(DELETED_CONVERSATIONS_STORAGE_KEY) ?? "[]") as unknown;
+    return Array.isArray(parsed)
+      ? parsed.filter((id): id is string => typeof id === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedConversationIds(ids: string[]) {
+  window.localStorage.setItem(DELETED_CONVERSATIONS_STORAGE_KEY, JSON.stringify(ids));
 }
 
 const taskStatusPriority: Record<ConversationTaskState["status"], number> = {
@@ -273,14 +289,15 @@ const officePlatformCatalog = [
   { id: "dingtalk", name: "钉钉", shortName: "钉", color: "var(--ui-color-blue-6)", description: "通过钉钉机器人接收并回复用户消息" },
 ] as const;
 
-const conversationMoreMenuItems: MenuProps["items"] = [
+const conversationHistoryMenuItems: MenuProps["items"] = [
   { key: "rename", icon: <Pencil size={14} />, label: "重命名" },
-  { key: "remove", icon: <ListMinus size={14} />, label: "从列表中移除" },
+  { key: "delete", danger: true, icon: <Trash2 size={14} />, label: "删除" },
 ];
 
 const getNavigationConversationMenuItems = (pinned: boolean): MenuProps["items"] => [
   { key: "pin", icon: pinned ? <PinOff size={14} /> : <Pin size={14} />, label: pinned ? "取消置顶" : "置顶" },
-  ...conversationMoreMenuItems,
+  { key: "rename", icon: <Pencil size={14} />, label: "重命名" },
+  { key: "remove", icon: <ListMinus size={14} />, label: "从列表中移除" },
 ];
 
 const getNavigationProjectMenuItems = (pinned: boolean): MenuProps["items"] => [
@@ -1613,8 +1630,11 @@ function ConversationWorkspace({
       .then((data) => {
         if (controller.signal.aborted) return;
         const realData = applyArgusUserData(data, userProjects);
+        const deletedConversationIds = new Set(readDeletedConversationIds());
         setProjectList(realData.projects);
-        setConversations(realData.conversations);
+        setConversations(realData.conversations.filter((conversation) => (
+          !deletedConversationIds.has(conversation.id)
+        )));
         setArgusDataLoaded(true);
         argusDataErrorNotifiedRef.current = false;
       })
@@ -2970,6 +2990,46 @@ function ConversationWorkspace({
     antMessage.success(`已从对话列表中移除“${label}”，历史记录已保留`);
   };
 
+  const deleteConversation = (conversation: Conversation) => {
+    modal.confirm({
+      title: `删除“${conversation.title}”？`,
+      content: "删除后，该条对话将不再显示，数字员工及其他对话不受影响。管理端运行与审计记录仍会保留。",
+      okText: "删除",
+      okButtonProps: { danger: true },
+      cancelText: "取消",
+      onOk: () => {
+        const deletedConversationIds = readDeletedConversationIds();
+        if (!deletedConversationIds.includes(conversation.id)) {
+          saveDeletedConversationIds([...deletedConversationIds, conversation.id]);
+        }
+        setConversations((current) => current.filter((item) => item.id !== conversation.id));
+        setConversationTasks((current) => {
+          if (!(conversation.id in current)) return current;
+          const next = { ...current };
+          delete next[conversation.id];
+          return next;
+        });
+        if (conversation.id === activeConversationId) {
+          const nextConversation = conversations.find((item) => (
+            item.id !== conversation.id
+            && (conversation.projectId === null
+              ? item.projectId === null
+                && getConversationNavigationKey(item) === getConversationNavigationKey(conversation)
+              : item.projectId === conversation.projectId)
+          ));
+          if (nextConversation) {
+            navigateTo(nextConversation.projectId === null
+              ? `/conversations/${nextConversation.id}`
+              : `/projects/${nextConversation.projectId}/conversations/${nextConversation.id}`);
+          } else {
+            navigateTo(conversation.projectId === null ? "/apps" : `/projects/${conversation.projectId}`);
+          }
+        }
+        antMessage.success("对话已删除");
+      },
+    });
+  };
+
   const beforeUpload: UploadProps["beforeUpload"] = (file) => {
     setSelectedFiles((current) => [...current, file as SelectedFile]);
     return false;
@@ -3077,7 +3137,7 @@ function ConversationWorkspace({
                     conversations={projectConversationHistory}
                     activeConversationId={projectConversationHistory[0]?.id ?? ""}
                     onCreate={() => createProjectConversation(activeProject.id)}
-                    onDelete={removeConversationFromList}
+                    onDelete={deleteConversation}
                     onRename={renameConversation}
                     onSelect={switchConversation}
                   />
@@ -3104,7 +3164,7 @@ function ConversationWorkspace({
                     onDraftFileRemove={(file) =>
                       setSelectedFiles((current) => current.filter((item) => item.uid !== file.uid))
                     }
-                    onDeleteConversation={removeConversationFromList}
+                    onDeleteConversation={deleteConversation}
                     onOpenConversation={switchConversation}
                     onOpenFile={(fileId) => {
                       setProjectFileToOpenId(fileId);
@@ -3199,7 +3259,7 @@ function ConversationWorkspace({
                         activeStandaloneApplication.id,
                         activeConversation.applicationAlias ?? activeStandaloneApplication.name,
                       )}
-                      onDelete={removeConversationFromList}
+                      onDelete={deleteConversation}
                       onRename={renameConversation}
                       onSelect={switchConversation}
                     />
@@ -3209,7 +3269,7 @@ function ConversationWorkspace({
                       conversations={projectConversationHistory}
                       activeConversationId={activeConversationId}
                       onCreate={() => createProjectConversation(activeProject.id)}
-                      onDelete={removeConversationFromList}
+                      onDelete={deleteConversation}
                       onRename={renameConversation}
                       onSelect={switchConversation}
                     />
@@ -4195,10 +4255,10 @@ function ConversationHistoryPanel({
               <Dropdown
                 trigger={["click"]}
                 menu={{
-                  items: conversationMoreMenuItems,
+                  items: conversationHistoryMenuItems,
                   onClick: ({ key }) => {
                     if (key === "rename") onRename(conversation);
-                    if (key === "remove") onDelete(conversation);
+                    if (key === "delete") onDelete(conversation);
                   },
                 }}
               >
@@ -8380,10 +8440,10 @@ function ProjectHome({
                       open={openConversationMenuId === conversation.id}
                       onOpenChange={(open) => setOpenConversationMenuId(open ? conversation.id : null)}
                       menu={{
-                        items: conversationMoreMenuItems,
+                        items: conversationHistoryMenuItems,
                         onClick: ({ key }) => {
                           if (key === "rename") onRenameConversation(conversation);
-                          if (key === "remove") onDeleteConversation(conversation);
+                          if (key === "delete") onDeleteConversation(conversation);
                         },
                       }}
                     >
