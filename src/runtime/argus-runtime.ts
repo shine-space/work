@@ -1,29 +1,11 @@
 import { requestArgusJson } from "./argus-api";
+import { listUserApplicationBindings, type ArgusBindingView } from "./argus-bindings";
 import type {
   ApplicationRuntime,
   RuntimeEventHandler,
   RuntimeResumeRequest,
   RuntimeRunRequest,
 } from "./types";
-
-type BindingView = {
-  application_name: string;
-  available: boolean;
-  access?: { executable?: boolean };
-  binding: {
-    participation_binding_id: string;
-    scope_type: string;
-    scope_id: string;
-    enabled: boolean;
-  };
-  revision: {
-    participation_binding_revision_id: string;
-    enabled: boolean;
-  };
-  deployment_revision: {
-    application_id: string;
-  };
-};
 
 type CommandView = {
   command: { command_id: string; runtime_run_id: string };
@@ -72,17 +54,16 @@ function waitForPoll(signal: AbortSignal) {
 
 export class ArgusApplicationRuntime implements ApplicationRuntime {
   readonly kind = "argus" as const;
-  private bindingsPromise: Promise<BindingView[]> | null = null;
+  private bindingsPromise: Promise<ArgusBindingView[]> | null = null;
 
   constructor(private readonly options: ArgusRuntimeOptions) {}
 
   private async listBindings(signal: AbortSignal) {
-    this.bindingsPromise ??= requestArgusJson<{ items: BindingView[] }>(
+    this.bindingsPromise ??= listUserApplicationBindings(
       this.options.baseUrl,
-      "/v1/applications/participation-bindings/list",
-      { workspace_id: this.options.workspaceId, cursor: "", limit: 100 },
+      this.options.workspaceId,
       signal,
-    ).then(({ items }) => items);
+    );
     try {
       return await this.bindingsPromise;
     } catch (error) {

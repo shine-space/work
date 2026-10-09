@@ -1,24 +1,7 @@
 import { requestArgusJson } from "./argus-api";
+import { listUserApplicationBindings, type ArgusBindingView } from "./argus-bindings";
 
-export type ArgusBindingView = {
-  application_name: string;
-  available: boolean;
-  access?: { executable?: boolean };
-  manifest: {
-    category?: string;
-    description?: string;
-    capabilities?: Array<{ title?: string; key: string }>;
-    representatives?: Array<{ name: string; description?: string; primary: boolean }>;
-  };
-  binding: {
-    participation_binding_id: string;
-    scope_type: "workspace" | "team" | "project";
-    scope_id: string;
-    enabled: boolean;
-  };
-  revision: { participation_binding_revision_id: string; enabled: boolean };
-  deployment_revision: { application_id: string; application_version_id: string };
-};
+export type { ArgusBindingView } from "./argus-bindings";
 
 export type ArgusCatalogApplication = {
   application_id: string;
@@ -105,12 +88,7 @@ export async function loadArgusUserData(baseUrl: string, workspaceId: string, si
       { workspace_id: workspaceId, cursor, limit: 100 },
       signal,
     )),
-    readAll((cursor) => requestArgusJson<{ items: ArgusBindingView[]; next_cursor?: string }>(
-      baseUrl,
-      "/v1/applications/participation-bindings/list",
-      { workspace_id: workspaceId, cursor, limit: 100 },
-      signal,
-    )).catch(() => []),
+    listUserApplicationBindings(baseUrl, workspaceId, signal),
     readAll((cursor) => requestArgusJson<{ items: ArgusWorkItem[]; next_cursor?: string }>(
       baseUrl,
       "/v1/applications/commands/work",
