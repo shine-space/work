@@ -199,6 +199,7 @@ const argusWorkspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_
 const USER_PROJECTS_STORAGE_KEY = `argus-user-projects-v1:${argusWorkspaceId}`;
 const HIDDEN_NAVIGATION_STORAGE_KEY = `argus:hidden-navigation-keys:${argusWorkspaceId}`;
 const DELETED_CONVERSATIONS_STORAGE_KEY = `argus:deleted-conversation-ids:${argusWorkspaceId}`;
+const DIGITAL_EMPLOYEE_ALIASES_STORAGE_KEY = `argus:digital-employee-aliases:${argusWorkspaceId}`;
 const applicationStudioUrl = import.meta.env.VITE_APPLICATION_STUDIO_URL?.trim()
   || `${window.location.protocol}//${window.location.hostname}:5173/applications/studio`;
 
@@ -247,6 +248,34 @@ function readDeletedConversationIds(): string[] {
 
 function saveDeletedConversationIds(ids: string[]) {
   window.localStorage.setItem(DELETED_CONVERSATIONS_STORAGE_KEY, JSON.stringify(ids));
+}
+
+function readDigitalEmployeeAliases(): Record<string, string> {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(DIGITAL_EMPLOYEE_ALIASES_STORAGE_KEY) ?? "{}") as unknown;
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter((entry): entry is [string, string] => (
+          typeof entry[0] === "string"
+          && typeof entry[1] === "string"
+          && Boolean(entry[0].trim())
+          && Boolean(entry[1].trim())
+        ))
+        .map(([applicationId, alias]) => [applicationId, alias.trim()]),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function saveDigitalEmployeeAlias(applicationId: string, alias: string) {
+  const normalizedAlias = alias.trim();
+  if (!applicationId || !normalizedAlias) return;
+  window.localStorage.setItem(DIGITAL_EMPLOYEE_ALIASES_STORAGE_KEY, JSON.stringify({
+    ...readDigitalEmployeeAliases(),
+    [applicationId]: normalizedAlias,
+  }));
 }
 
 const taskStatusPriority: Record<ConversationTaskState["status"], number> = {
@@ -960,6 +989,7 @@ function formatRealUpdatedAt(value: string) {
 }
 
 function applyArgusUserData(data: ArgusUserData, userProjects: Project[]) {
+  const digitalEmployeeAliases = readDigitalEmployeeAliases();
   const usableBindings = data.bindings.filter((item) => (
     item.available
     && item.binding.enabled
@@ -1030,6 +1060,7 @@ function applyArgusUserData(data: ArgusUserData, userProjects: Project[]) {
         agentId: catalog.id,
         applicationId: "conversation",
         catalogApplicationId: catalog.id,
+        applicationAlias: digitalEmployeeAliases[catalog.id] ?? null,
         title: item.capability_title?.trim() || item.application_name,
         updatedAt: formatRealUpdatedAt(item.updated_at || item.created_at),
         messages,
@@ -2753,6 +2784,7 @@ function ConversationWorkspace({
 
   const launchStandaloneApplication = (application: CatalogApplication, alias: string) => {
     setHiddenNavigationKeys((current) => current.filter((key) => key !== `application:${application.id}`));
+    saveDigitalEmployeeAlias(application.id, alias);
     createStandaloneConversation(application.contextId, application.id, alias);
     antMessage.success(`${alias}已创建`);
   };
@@ -2852,6 +2884,7 @@ function ConversationWorkspace({
             antMessage.warning("请输入数字员工名称");
             return Promise.reject();
           }
+          saveDigitalEmployeeAlias(standaloneApplicationTemplate.id, nextName);
           setConversations((current) => current.map((item) => (
             item.projectId === null
             && getConversationCatalogTemplate(item)?.id === standaloneApplicationTemplate.id
