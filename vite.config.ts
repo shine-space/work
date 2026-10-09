@@ -12,6 +12,12 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5174,
     strictPort: true,
+    proxy: {
+      "/api": {
+        target: process.env.VITE_API_PROXY_TARGET ?? "http://127.0.0.1:8888",
+        changeOrigin: true,
+      },
+    },
     // Cpolar's free plan assigns a new random subdomain whenever the tunnel
     // restarts. Restrict access to Cpolar-owned suffixes instead of disabling
     // Vite's host validation entirely.

@@ -9,11 +9,32 @@ type ApiEnvelope<T> = {
   detail?: string;
 };
 
-type TokenResponse = {
+export type TokenResponse = {
   access_token: string;
   refresh_token: string;
   role?: string;
 };
+
+export function hasArgusSession() {
+  return Boolean(window.localStorage.getItem(ACCESS_TOKEN_KEY));
+}
+
+export async function loginArgus(baseUrl: string, email: string, password: string) {
+  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  const payload = await readJson(response) as ApiEnvelope<TokenResponse>;
+  if (!response.ok || !payload.data?.access_token || !payload.data.refresh_token) {
+    throw new Error(getErrorMessage(payload, "登录失败，请检查账号信息后重试。"));
+  }
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, payload.data.access_token);
+  window.localStorage.setItem(REFRESH_TOKEN_KEY, payload.data.refresh_token);
+  if (payload.data.role) window.localStorage.setItem("argus.role", payload.data.role);
+  window.dispatchEvent(new Event("argus:auth-refreshed"));
+  return payload.data;
+}
 
 let refreshRequest: Promise<boolean> | null = null;
 

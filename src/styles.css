@@ -3,6 +3,29 @@
 @import "./theme-assets/radius.css";
 @import "./theme-assets/motion.css";
 
+.runtime-login-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--ui-color-neutral-1);
+}
+
+.runtime-login-card {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 20px;
+  padding: 32px;
+  border: 1px solid var(--ui-color-neutral-3);
+  border-radius: 16px;
+  background: var(--ui-color-white);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.1);
+}
+
+.runtime-login-card > img { width: 44px; height: 44px; }
+.runtime-login-card .ant-typography { margin: 0; }
+.runtime-login-error { color: var(--ant-color-error); font-size: 13px; }
+
 :root {
   color: var(--ui-color-black-a65);
   background: var(--ui-color-neutral-2);

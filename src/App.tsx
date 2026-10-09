@@ -149,6 +149,8 @@ import {
 } from "./data";
 import FolderFloat from "./components/FolderFloat";
 import { createApplicationRuntime, type RuntimeEvent } from "./runtime";
+import { hasArgusSession, loginArgus } from "./runtime/argus-api";
+import { loadArgusUserData, type ArgusBindingView, type ArgusUserData } from "./runtime/argus-data";
 import { createTheme } from "./theme";
 
 const { Content } = Layout;
@@ -191,6 +193,9 @@ type ConversationTaskState = {
 const SHOW_TASK_ISLAND_PROFILE_ON_HOVER = false;
 const TASK_ISLAND_IDLE_HIDE_DELAY = 10_000;
 const applicationRuntime = createApplicationRuntime();
+const argusRuntimeEnabled = applicationRuntime.kind === "argus";
+const argusRuntimeBaseUrl = import.meta.env.VITE_RUNTIME_BASE_URL || "/api";
+const argusWorkspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_argus_default";
 
 const taskStatusPriority: Record<ConversationTaskState["status"], number> = {
   waiting: 4,
@@ -691,7 +696,7 @@ type SkillDefinition = {
   iconBackground: string;
 };
 
-const skillCatalog: SkillDefinition[] = [
+const skillCatalog: SkillDefinition[] = argusRuntimeEnabled ? [] : [
   { id: "deep-research", name: "深度研究", category: "研究分析", description: "围绕复杂课题检索并交叉验证多来源资料，识别证据冲突与信息缺口，输出带出处、关键判断和后续建议的结构化研究结论。", icon: "telescope", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(135deg, #ff9b54 0%, #ff6f72 52%, #9a83ff 100%)" },
   { id: "content-creation", name: "内容研创", category: "内容创作", description: "结合目标、素材、受众与表达场景规划内容结构和叙事重点，生成可继续编辑的文章、方案、邮件或宣传内容初稿。", icon: "pen", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(45deg, #59c9d3 0%, #ff9c54 52%, #e97ac6 100%)" },
   { id: "webpage-reader", name: "网页速读", category: "研究分析", description: "快速阅读长网页并提炼核心观点、关键数据、事实依据和待跟进事项，帮助你在较短时间内掌握内容全貌与行动重点。", icon: "scan", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(160deg, #ffd45c 0%, #ff8b4b 48%, #67b9ee 100%)" },
@@ -725,7 +730,7 @@ type SkillInstallation = {
 };
 
 const SKILL_INSTALLATIONS_STORAGE_KEY = "argus-skill-installations-v1";
-const initialSkillInstallations: SkillInstallation[] = [
+const initialSkillInstallations: SkillInstallation[] = argusRuntimeEnabled ? [] : [
   { skillId: "deep-research", targetType: "digital-employee", targetId: "enterprise-knowledge-manager" },
   { skillId: "data-insight", targetType: "project", targetId: "project-growth" },
   { skillId: "risk-scan", targetType: "project", targetId: "project-contract" },
@@ -799,6 +804,109 @@ const applicationCatalog: CatalogApplication[] = applicationCatalogSource.map((a
   cover: getPublicAssetPath(application.cover),
   avatar: getPublicAssetPath(application.avatar),
 }));
+
+function getRealCatalogApplication(binding: ArgusBindingView): CatalogApplication {
+  const template = applicationCatalogSource.find((item) => item.name === binding.application_name);
+  const representative = binding.manifest.representatives?.find((item) => item.primary)
+    ?? binding.manifest.representatives?.[0];
+  const configuredCategory = binding.manifest.category?.trim();
+  const category = applicationCategories.includes(configuredCategory as ApplicationCategory)
+    && configuredCategory !== "全部"
+    ? configuredCategory as ApplicationCardCategory
+    : template?.category ?? "知识研究";
+  const fallbackAsset = applicationCatalogSource[applicationCatalogSource.length - 1];
+  return {
+    id: binding.binding.participation_binding_id,
+    name: representative?.name?.trim() || binding.application_name,
+    originalName: binding.application_name,
+    category,
+    description: binding.manifest.description?.trim()
+      || representative?.description?.trim()
+      || template?.description
+      || "由管理端发布并授权的数字员工",
+    cover: getPublicAssetPath(template?.cover ?? fallbackAsset.cover),
+    avatar: getPublicAssetPath(template?.avatar ?? fallbackAsset.avatar),
+    contextId: "conversation",
+  };
+}
+
+function formatRealUpdatedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const elapsedMinutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000));
+  if (elapsedMinutes < 1) return "刚刚";
+  if (elapsedMinutes < 60) return `${elapsedMinutes} 分钟前`;
+  if (elapsedMinutes < 1_440) return `${Math.floor(elapsedMinutes / 60)} 小时前`;
+  return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
+}
+
+function applyArgusUserData(data: ArgusUserData) {
+  const usableBindings = data.bindings.filter((item) => (
+    item.available
+    && item.binding.enabled
+    && item.revision.enabled
+    && item.access?.executable !== false
+    && Boolean(item.manifest.representatives?.length)
+  ));
+  const realCatalog = usableBindings.map(getRealCatalogApplication);
+  applicationCatalog.splice(0, applicationCatalog.length, ...realCatalog);
+
+  const catalogByBinding = new Map(realCatalog.map((item) => [item.id, item]));
+  const projectsById = new Map(data.spaces.map(({ space }) => [space.space_id, space]));
+  const realProjects: Project[] = data.spaces.map(({ space }) => {
+    const applicationIds = usableBindings
+      .filter((binding) => binding.binding.scope_type === "project" && binding.binding.scope_id === space.space_id)
+      .map((binding) => binding.binding.participation_binding_id);
+    return {
+      id: space.space_id,
+      name: space.name,
+      code: "",
+      description: space.description || space.goal || "",
+      applicationIds,
+      administratorApplicationId: applicationIds[0],
+    };
+  });
+  const realConversations: Conversation[] = data.work
+    .filter((item) => catalogByBinding.has(item.participation_binding_id))
+    .map((item) => {
+      const catalog = catalogByBinding.get(item.participation_binding_id)!;
+      const turns = item.detail.employee_turns ?? [];
+      const messages = turns.flatMap<DemoMessage>((turn, index) => {
+        const createdAt = new Date(item.updated_at || item.created_at);
+        const result: DemoMessage[] = [];
+        if (turn.user_input?.trim()) result.push({
+          id: `${item.command_id}-${index}-user`,
+          role: "user",
+          content: [{ type: "text", text: turn.user_input }],
+          createdAt,
+        });
+        if (turn.answer?.trim()) result.push({
+          id: `${item.command_id}-${index}-assistant`,
+          role: "assistant",
+          content: [{ type: "text", text: turn.answer }],
+          createdAt,
+          metadata: { custom: { catalogApplicationId: catalog.id } },
+        });
+        return result;
+      });
+      const projectId = item.scope_type === "project" && projectsById.has(item.scope_id)
+        ? item.scope_id
+        : null;
+      const conversationId = `command-${item.command_id}`;
+      window.localStorage.setItem(`argus-user-client-command:${conversationId}`, item.command_id);
+      return {
+        id: conversationId,
+        projectId,
+        agentId: catalog.id,
+        applicationId: "conversation",
+        catalogApplicationId: catalog.id,
+        title: item.capability_title?.trim() || item.application_name,
+        updatedAt: formatRealUpdatedAt(item.updated_at || item.created_at),
+        messages,
+      };
+    });
+  return { projects: realProjects, conversations: realConversations };
+}
 
 const applicationSkillTags: Record<CatalogApplication["id"], readonly [string, string, string]> = {
   "senior-developer": ["架构设计", "技术攻坚", "代码评审"],
@@ -1161,7 +1269,9 @@ function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   if (projectMatch) {
     return { page: "project", projectId: decodeURIComponent(projectMatch[1]) };
   }
-  return { page: "project", projectId: projects[0].id };
+  return argusRuntimeEnabled
+    ? { page: "applications" }
+    : { page: "project", projectId: projects[0].id };
 }
 
 function getText(content: AppendMessage["content"]) {
@@ -1213,6 +1323,7 @@ function isUnsentConversationDraft(conversation: Conversation) {
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(false);
+  const [argusSessionVersion, setArgusSessionVersion] = useState(0);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => window.localStorage.getItem("argus-sidebar-collapsed") === "true",
@@ -1225,16 +1336,56 @@ export default function App() {
   return (
     <ConfigProvider button={{ autoInsertSpace: false }} locale={zhCN} theme={createTheme(darkMode)}>
       <AntApp>
-        <ConversationWorkspace
-          darkMode={darkMode}
-          mobileNavigationOpen={mobileNavigationOpen}
-          sidebarCollapsed={sidebarCollapsed}
-          onDarkModeChange={setDarkMode}
-          onMobileNavigationChange={setMobileNavigationOpen}
-          onSidebarCollapsedChange={setSidebarCollapsed}
-        />
+        {argusRuntimeEnabled && !hasArgusSession() ? (
+          <ArgusLoginScreen onAuthenticated={() => setArgusSessionVersion((value) => value + 1)} />
+        ) : (
+          <ConversationWorkspace
+            key={argusSessionVersion}
+            darkMode={darkMode}
+            mobileNavigationOpen={mobileNavigationOpen}
+            sidebarCollapsed={sidebarCollapsed}
+            onDarkModeChange={setDarkMode}
+            onMobileNavigationChange={setMobileNavigationOpen}
+            onSidebarCollapsedChange={setSidebarCollapsed}
+          />
+        )}
       </AntApp>
     </ConfigProvider>
+  );
+}
+
+function ArgusLoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (values: { email: string; password: string }) => {
+    setSubmitting(true);
+    setError("");
+    try {
+      await loginArgus(argusRuntimeBaseUrl, values.email.trim(), values.password);
+      onAuthenticated();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "登录失败，请稍后重试。");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+  return (
+    <main className="runtime-login-page">
+      <section className="runtime-login-card" aria-labelledby="runtime-login-title">
+        <img src={getPublicAssetPath("logo-collapsed.png")} alt="" aria-hidden="true" />
+        <div><Title id="runtime-login-title" level={3}>登录朝夕智能</Title><Text type="secondary">使用管理端账号读取已授权的数字员工、项目和对话。</Text></div>
+        {error ? <div className="runtime-login-error" role="alert">{error}</div> : null}
+        <Form layout="vertical" onFinish={submit} requiredMark={false}>
+          <Form.Item label="邮箱" name="email" rules={[{ required: true, message: "请输入邮箱" }]}>
+            <Input autoComplete="username" placeholder="请输入邮箱" />
+          </Form.Item>
+          <Form.Item label="密码" name="password" rules={[{ required: true, message: "请输入密码" }]}>
+            <Input.Password autoComplete="current-password" placeholder="请输入密码" />
+          </Form.Item>
+          <Button block htmlType="submit" loading={submitting} type="primary">登录</Button>
+        </Form>
+      </section>
+    </main>
   );
 }
 
@@ -1245,6 +1396,24 @@ type ConversationWorkspaceProps = {
   onDarkModeChange: (value: boolean) => void;
   onMobileNavigationChange: (value: boolean) => void;
   onSidebarCollapsedChange: (value: boolean) => void;
+};
+
+const emptyProject: Project = {
+  id: "",
+  name: "暂无群组项目",
+  code: "",
+  description: "",
+  applicationIds: [],
+};
+
+const emptyConversation: Conversation = {
+  id: "empty-conversation",
+  projectId: null,
+  agentId: agents[0]?.id ?? "",
+  applicationId: null,
+  title: "新对话",
+  updatedAt: "",
+  messages: [],
 };
 
 function ConversationWorkspace({
@@ -1258,8 +1427,8 @@ function ConversationWorkspace({
   const { message: antMessage, modal } = AntApp.useApp();
   const { token: themeToken } = antdTheme.useToken();
   const reduceTaskIslandMotion = useReducedMotion();
-  const [projectList, setProjectList] = useState<Project[]>(projects);
-  const [conversations, setConversations] = useState(initialConversations);
+  const [projectList, setProjectList] = useState<Project[]>(argusRuntimeEnabled ? [] : projects);
+  const [conversations, setConversations] = useState(argusRuntimeEnabled ? [] : initialConversations);
   const [skillInstallations, setSkillInstallations] = useState<SkillInstallation[]>(readSkillInstallations);
   const [pathname, setPathname] = useState(() => {
     const initialLocation = getWorkspacePathname(window.location.pathname);
@@ -1285,6 +1454,27 @@ function ConversationWorkspace({
   const taskIslandPointerInsideRef = useRef(false);
   const composerPromptRef = useRef<((prompt: string) => void) | null>(null);
   const [taskIslandIdleVisible, setTaskIslandIdleVisible] = useState(false);
+
+  useEffect(() => {
+    if (!argusRuntimeEnabled) return;
+    const controller = new AbortController();
+    applicationCatalog.splice(0, applicationCatalog.length);
+    void loadArgusUserData(argusRuntimeBaseUrl, argusWorkspaceId, controller.signal)
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        const realData = applyArgusUserData(data);
+        setProjectList(realData.projects);
+        setConversations(realData.conversations);
+      })
+      .catch((reason) => {
+        if (controller.signal.aborted) return;
+        applicationCatalog.splice(0, applicationCatalog.length);
+        setProjectList([]);
+        setConversations([]);
+        antMessage.error(reason instanceof Error ? reason.message : "管理端数据读取失败，请稍后重试。");
+      });
+    return () => controller.abort();
+  }, [antMessage]);
 
   useEffect(() => {
     window.localStorage.setItem(SKILL_INSTALLATIONS_STORAGE_KEY, JSON.stringify(skillInstallations));
@@ -1333,7 +1523,7 @@ function ConversationWorkspace({
       (project) =>
         (route.page === "project" || route.page === "conversation") &&
         project.id === route.projectId,
-    ) ?? projectList[0];
+    ) ?? projectList[0] ?? emptyProject;
   const standaloneConversations = conversations.filter((conversation) => conversation.projectId === null);
   const projectConversations = conversations.filter(
     (conversation) => conversation.projectId === activeProject.id,
@@ -1354,7 +1544,7 @@ function ConversationWorkspace({
             (conversation) =>
               conversation.id === route.conversationId && conversation.projectId === activeProject.id,
           )
-        : projectConversationHistory[0]) ?? conversations[0];
+        : projectConversationHistory[0]) ?? conversations[0] ?? emptyConversation;
   const activeConversationId = activeConversation.id;
   useEffect(() => {
     if (isUnsentConversationDraft(activeConversation)) setProjectWorkspaceTool(null);
