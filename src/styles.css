@@ -741,6 +741,7 @@ button.settings-logout-item:focus-visible > svg { color: currentColor !important
 .create-project-application-list { min-height: 0; flex: 1; overflow-x: hidden; overflow-y: auto; }
 .create-project-application-list.is-empty { display: grid; place-items: center; }
 .create-project-application-list.is-empty .ant-empty { margin: 0; }
+.create-project-application-list.is-empty .ant-empty-description { color: var(--ant-color-text-quaternary); font-size: 12px; line-height: 20px; }
 .create-project-application { display: grid; min-width: 0; min-height: 54px; padding: 6px 4px; grid-template-columns: 32px minmax(0, 1fr) 16px; align-items: center; gap: 12px; border-radius: var(--ty-radius-8); cursor: pointer; transition: background-color 120ms ease; }
 .create-project-application:hover { background: var(--ant-color-fill-quaternary); }
 .create-project-application[data-checked="true"] { background: var(--ant-color-fill-quaternary); }
