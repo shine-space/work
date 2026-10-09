@@ -7,6 +7,7 @@ export type ArgusBindingView = {
   manifest: {
     category?: string;
     description?: string;
+    capabilities?: Array<{ title?: string; key: string }>;
     representatives?: Array<{ name: string; description?: string; primary: boolean }>;
   };
   binding: {

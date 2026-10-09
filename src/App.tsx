@@ -774,6 +774,7 @@ type CatalogApplication = {
   cover: string;
   avatar: string;
   contextId: ApplicationId;
+  skills?: readonly string[];
 };
 
 const applicationCatalogSource: CatalogApplication[] = [
@@ -827,6 +828,10 @@ function getRealCatalogApplication(binding: ArgusBindingView): CatalogApplicatio
     cover: getPublicAssetPath(template?.cover ?? fallbackAsset.cover),
     avatar: getPublicAssetPath(template?.avatar ?? fallbackAsset.avatar),
     contextId: "conversation",
+    skills: (binding.manifest.capabilities ?? [])
+      .map((capability) => capability.title?.trim() || capability.key.trim())
+      .filter(Boolean)
+      .slice(0, 3),
   };
 }
 
@@ -931,8 +936,16 @@ const applicationSkillTags: Record<CatalogApplication["id"], readonly [string, s
   "enterprise-knowledge-manager": ["知识分类", "内容治理", "检索复用"],
 };
 
+function getApplicationSkillTags(application: CatalogApplication): readonly string[] {
+  if (application.skills?.length) return application.skills;
+  const direct = applicationSkillTags[application.id];
+  if (direct?.length) return direct;
+  const template = applicationCatalogSource.find((item) => item.name === application.originalName);
+  return template ? applicationSkillTags[template.id] ?? [] : [];
+}
+
 function getApplicationStarterPrompts(application: CatalogApplication) {
-  const [primarySkill, secondarySkill, tertiarySkill] = applicationSkillTags[application.id];
+  const [primarySkill = "专业协作", secondarySkill = "问题分析", tertiarySkill = "方案优化"] = getApplicationSkillTags(application);
   return [
     `请帮我完成一项${primarySkill}任务，并整理清晰的执行步骤`,
     `请分析当前问题，运用${secondarySkill}给出专业建议`,
@@ -4781,10 +4794,10 @@ function ProjectWorkspaceRail({
                 <section className="application-profile-section">
                   <div className="application-profile-section-heading">
                     <h4>核心能力</h4>
-                    <span>{applicationSkillTags[profileApplication.id].length} 项</span>
+                    <span>{getApplicationSkillTags(profileApplication).length} 项</span>
                   </div>
                   <div className="application-profile-capabilities">
-                    {applicationSkillTags[profileApplication.id].map((capability) => (
+                    {getApplicationSkillTags(profileApplication).map((capability) => (
                       <div key={capability}>
                         <span className="application-profile-check" aria-hidden="true"><Check size={13} /></span>
                         <span>{capability}</span>
@@ -5918,7 +5931,7 @@ function DigitalEmployeeDetailModal({
 }) {
   const reduceMotion = useReducedMotion();
   if (!application) return null;
-  const capabilities = applicationSkillTags[application.id];
+  const capabilities = getApplicationSkillTags(application);
   const detailTransition = reduceMotion
     ? { duration: 0 }
     : { type: "spring" as const, stiffness: 320, damping: 32, bounce: 0 };
@@ -6068,7 +6081,7 @@ function CreateDigitalEmployeeModal({
         <div className="create-digital-employee-capabilities">
           <span>我擅长：</span>
           <div>
-            {applicationSkillTags[application.id].map((capability, index) => (
+            {getApplicationSkillTags(application).map((capability, index) => (
               <span key={capability}>
                 {index > 0 ? <i aria-hidden="true">·</i> : null}
                 {capability}
@@ -6826,7 +6839,7 @@ function ApplicationsHome({
                       <span className="application-card-details">
                         <span className="application-card-description">{application.description}</span>
                         <span className="application-card-tags" aria-label={`${application.name}能力`}>
-                          {applicationSkillTags[application.id].map((skill) => (
+                          {getApplicationSkillTags(application).map((skill) => (
                             <span className="application-card-tag" key={skill}>{skill}</span>
                           ))}
                         </span>
