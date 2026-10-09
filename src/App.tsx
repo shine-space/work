@@ -196,6 +196,7 @@ const applicationRuntime = createApplicationRuntime();
 const argusRuntimeEnabled = applicationRuntime.kind === "argus";
 const argusRuntimeBaseUrl = import.meta.env.VITE_RUNTIME_BASE_URL || "/api";
 const argusWorkspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_argus_default";
+const argusDataReloadMarker = `${import.meta.url}:${Date.now()}`;
 
 const taskStatusPriority: Record<ConversationTaskState["status"], number> = {
   waiting: 4,
@@ -800,7 +801,7 @@ const applicationCatalogSource: CatalogApplication[] = [
   { id: "enterprise-knowledge-manager", name: "企业知识管理员", category: "知识研究", description: "建立知识分类、治理与更新机制，提升企业信息检索、复用和传承效率", cover: "/application-covers/20-企业知识管理员.png", avatar: "/application-avatars/20-企业知识管理员.png", contextId: "project" },
 ];
 
-const applicationCatalog: CatalogApplication[] = applicationCatalogSource.map((application) => ({
+const applicationCatalog: CatalogApplication[] = (argusRuntimeEnabled ? [] : applicationCatalogSource).map((application) => ({
   ...application,
   cover: getPublicAssetPath(application.cover),
   avatar: getPublicAssetPath(application.avatar),
@@ -1497,7 +1498,7 @@ function ConversationWorkspace({
         antMessage.error(reason instanceof Error ? reason.message : "管理端数据读取失败，请稍后重试。");
       });
     return () => controller.abort();
-  }, [antMessage]);
+  }, [antMessage, argusDataReloadMarker]);
 
   useEffect(() => {
     window.localStorage.setItem(SKILL_INSTALLATIONS_STORAGE_KEY, JSON.stringify(skillInstallations));
