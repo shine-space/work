@@ -9198,6 +9198,13 @@ function ConversationNavigation({
     ? { duration: 0 }
     : { duration: 0.18, ease: [0.2, 0, 0, 1] as const };
 
+  const openAccountSettings = () => {
+    const accountUrl = new URL("/settings/account", applicationStudioUrl);
+    const returnPath = `${getBrowserPath(getWorkspacePathname(window.location.pathname))}${window.location.search}${window.location.hash}`;
+    accountUrl.searchParams.set("return_to", new URL(returnPath, window.location.origin).toString());
+    window.location.assign(accountUrl.toString());
+  };
+
   const navigationItemNodes = navigationItems.map((item) => {
     if (item.type === "project") {
       const { project, latestConversation } = item;
@@ -9327,7 +9334,14 @@ function ConversationNavigation({
           <Archive size={16} />
           <span>归档</span>
         </button>
-        <button className="settings-menu-item" type="button" onClick={() => onPrototypeAction("账号设置")}>
+        <button
+          className="settings-menu-item"
+          type="button"
+          onClick={() => {
+            setSettingsOpen(false);
+            openAccountSettings();
+          }}
+        >
           <UserRoundCog size={16} />
           <span>账号设置</span>
         </button>
