@@ -13,10 +13,14 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://127.0.0.1:5174`.
+Open `http://127.0.0.1:5174/office/overview` when running this repository by
+itself. The Argus management console proxies the same workspace at
+`http://127.0.0.1:5173/office/overview`, so switching surfaces keeps one origin.
 
 Copy `.env.example` to `.env.local` when the application-building workspace is
 hosted separately, then set `VITE_APPLICATION_STUDIO_URL` to its full URL.
+Set `VITE_APP_BASE_PATH` only when the user workspace is mounted at a different
+path; local Argus development uses `/office/`.
 
 The conversation execution boundary is defined in
 [`docs/runtime-integration.md`](docs/runtime-integration.md). The preview uses a
