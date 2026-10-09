@@ -19,16 +19,6 @@ export type ArgusBindingView = {
   revision: { participation_binding_revision_id: string; enabled: boolean };
 };
 
-export type ArgusSpaceView = {
-  space: {
-    space_id: string;
-    name: string;
-    description: string;
-    goal: string;
-    status: string;
-  };
-};
-
 export type ArgusWorkItem = {
   command_id: string;
   participation_binding_id: string;
@@ -54,7 +44,6 @@ export type ArgusCommandView = {
 
 export type ArgusUserData = {
   bindings: ArgusBindingView[];
-  spaces: ArgusSpaceView[];
   work: Array<ArgusWorkItem & { detail: ArgusCommandView }>;
 };
 
@@ -72,17 +61,11 @@ async function readAll<T>(
 }
 
 export async function loadArgusUserData(baseUrl: string, workspaceId: string, signal: AbortSignal): Promise<ArgusUserData> {
-  const [bindings, spaces, workItems] = await Promise.all([
+  const [bindings, workItems] = await Promise.all([
     readAll((cursor) => requestArgusJson<{ items: ArgusBindingView[]; next_cursor?: string }>(
       baseUrl,
       "/v1/applications/participation-bindings/list",
       { workspace_id: workspaceId, cursor, limit: 100 },
-      signal,
-    )),
-    readAll((cursor) => requestArgusJson<{ items: ArgusSpaceView[]; next_cursor?: string }>(
-      baseUrl,
-      "/v1/spaces/list",
-      { workspace_id: workspaceId, kind: "project", cursor, limit: 100 },
       signal,
     )),
     readAll((cursor) => requestArgusJson<{ items: ArgusWorkItem[]; next_cursor?: string }>(
@@ -103,5 +86,5 @@ export async function loadArgusUserData(baseUrl: string, workspaceId: string, si
       signal,
     ),
   })));
-  return { bindings, spaces, work };
+  return { bindings, work };
 }

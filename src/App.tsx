@@ -197,6 +197,28 @@ const argusRuntimeEnabled = applicationRuntime.kind === "argus";
 const argusRuntimeBaseUrl = import.meta.env.VITE_RUNTIME_BASE_URL || "/api";
 const argusWorkspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_argus_default";
 const argusDataReloadMarker = `${import.meta.url}:${Date.now()}`;
+const USER_PROJECTS_STORAGE_KEY = `argus-user-projects-v1:${argusWorkspaceId}`;
+
+function readUserProjects(): Project[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(USER_PROJECTS_STORAGE_KEY) ?? "[]") as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is Project => (
+      typeof item === "object"
+      && item !== null
+      && typeof (item as Project).id === "string"
+      && typeof (item as Project).name === "string"
+      && typeof (item as Project).code === "string"
+      && typeof (item as Project).description === "string"
+    ));
+  } catch {
+    return [];
+  }
+}
+
+function saveUserProjects(projectsToSave: Project[]) {
+  window.localStorage.setItem(USER_PROJECTS_STORAGE_KEY, JSON.stringify(projectsToSave));
+}
 
 const taskStatusPriority: Record<ConversationTaskState["status"], number> = {
   waiting: 4,
@@ -846,7 +868,7 @@ function formatRealUpdatedAt(value: string) {
   return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
 }
 
-function applyArgusUserData(data: ArgusUserData) {
+function applyArgusUserData(data: ArgusUserData, userProjects: Project[]) {
   const usableBindings = data.bindings.filter((item) => (
     item.available
     && item.binding.enabled
@@ -858,23 +880,10 @@ function applyArgusUserData(data: ArgusUserData) {
   applicationCatalog.splice(0, applicationCatalog.length, ...realCatalog);
 
   const catalogByBinding = new Map(realCatalog.map((item) => [item.id, item]));
-  const projectsById = new Map(data.spaces.map(({ space }) => [space.space_id, space]));
-  const realProjects: Project[] = data.spaces.map(({ space }) => {
-    const applicationIds = usableBindings
-      .filter((binding) => binding.binding.scope_type === "project" && binding.binding.scope_id === space.space_id)
-      .map((binding) => binding.binding.participation_binding_id);
-    return {
-      id: space.space_id,
-      name: space.name,
-      code: "",
-      description: space.description || space.goal || "",
-      applicationIds,
-      administratorApplicationId: applicationIds[0],
-      archived: space.status.trim().toLocaleLowerCase() === "archived",
-    };
-  });
+  const projectIds = new Set(userProjects.map((project) => project.id));
   const realConversations: Conversation[] = data.work
     .filter((item) => catalogByBinding.has(item.participation_binding_id))
+    .filter((item) => item.scope_type !== "project" || projectIds.has(item.scope_id))
     .map((item) => {
       const catalog = catalogByBinding.get(item.participation_binding_id)!;
       const turns = item.detail.employee_turns ?? [];
@@ -896,7 +905,7 @@ function applyArgusUserData(data: ArgusUserData) {
         });
         return result;
       });
-      const projectId = item.scope_type === "project" && projectsById.has(item.scope_id)
+      const projectId = item.scope_type === "project" && projectIds.has(item.scope_id)
         ? item.scope_id
         : null;
       const conversationId = `command-${item.command_id}`;
@@ -912,7 +921,7 @@ function applyArgusUserData(data: ArgusUserData) {
         messages,
       };
     });
-  return { projects: realProjects, conversations: realConversations };
+  return { conversations: realConversations };
 }
 
 const applicationSkillTags: Record<CatalogApplication["id"], readonly [string, string, string]> = {
@@ -1448,7 +1457,7 @@ function ConversationWorkspace({
   const { message: antMessage, modal } = AntApp.useApp();
   const { token: themeToken } = antdTheme.useToken();
   const reduceTaskIslandMotion = useReducedMotion();
-  const [projectList, setProjectList] = useState<Project[]>(argusRuntimeEnabled ? [] : projects);
+  const [projectList, setProjectList] = useState<Project[]>(argusRuntimeEnabled ? readUserProjects : () => projects);
   const [conversations, setConversations] = useState(argusRuntimeEnabled ? [] : initialConversations);
   const [argusDataLoaded, setArgusDataLoaded] = useState(!argusRuntimeEnabled);
   const [skillInstallations, setSkillInstallations] = useState<SkillInstallation[]>(readSkillInstallations);
@@ -1477,22 +1486,31 @@ function ConversationWorkspace({
   const composerPromptRef = useRef<((prompt: string) => void) | null>(null);
   const [taskIslandIdleVisible, setTaskIslandIdleVisible] = useState(false);
 
+  const updateUserProjects = useCallback((update: (current: Project[]) => Project[]) => {
+    setProjectList((current) => {
+      const next = update(current);
+      if (argusRuntimeEnabled) saveUserProjects(next);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!argusRuntimeEnabled) return;
     const controller = new AbortController();
+    const userProjects = readUserProjects();
     applicationCatalog.splice(0, applicationCatalog.length);
+    setProjectList(userProjects);
     void loadArgusUserData(argusRuntimeBaseUrl, argusWorkspaceId, controller.signal)
       .then((data) => {
         if (controller.signal.aborted) return;
-        const realData = applyArgusUserData(data);
-        setProjectList(realData.projects);
+        const realData = applyArgusUserData(data, userProjects);
         setConversations(realData.conversations);
         setArgusDataLoaded(true);
       })
       .catch((reason) => {
         if (controller.signal.aborted) return;
         applicationCatalog.splice(0, applicationCatalog.length);
-        setProjectList([]);
+        setProjectList(userProjects);
         setConversations([]);
         setArgusDataLoaded(true);
         antMessage.error(reason instanceof Error ? reason.message : "管理端数据读取失败，请稍后重试。");
@@ -2490,7 +2508,7 @@ function ConversationWorkspace({
       administratorApplicationId,
     };
     discardActiveEmptyConversation();
-    setProjectList((current) => [...current, project]);
+    updateUserProjects((current) => [...current, project]);
     createProjectConversation(project.id, "", [], "project", null, project);
     antMessage.success("群组项目已创建");
   };
@@ -2743,7 +2761,7 @@ function ConversationWorkspace({
           antMessage.warning("请输入群组项目名称");
           return Promise.reject();
         }
-        setProjectList((current) =>
+        updateUserProjects((current) =>
           current.map((item) => item.id === project.id ? { ...item, name: nextName } : item),
         );
         antMessage.success("群组项目名称已更新");
@@ -2759,7 +2777,7 @@ function ConversationWorkspace({
       okButtonProps: { danger: true },
       cancelText: "取消",
       onOk: () => {
-        setProjectList((current) => current.map((item) => (
+        updateUserProjects((current) => current.map((item) => (
           item.id === project.id ? { ...item, archived: true } : item
         )));
         navigateTo("/archive");
@@ -2795,7 +2813,7 @@ function ConversationWorkspace({
           antMessage.warning("请输入群组项目名称");
           return Promise.reject();
         }
-        setProjectList((current) => current.map((item) => (
+        updateUserProjects((current) => current.map((item) => (
           item.id === project.id
             ? { ...item, name: nextName }
             : item
@@ -3017,7 +3035,7 @@ function ConversationWorkspace({
                       );
                     }}
                     onProjectApplicationsChange={(applicationIds) => {
-                      setProjectList((current) => current.map((project) => (
+                      updateUserProjects((current) => current.map((project) => (
                         project.id === activeProject.id
                           ? { ...project, applicationIds }
                           : project
@@ -3303,7 +3321,7 @@ function ConversationWorkspace({
                     onInstallSkill={installSkill}
                     onProjectNameChange={!isStandaloneConversation
                       ? (projectId, name) => {
-                          setProjectList((current) => current.map((project) => (
+                          updateUserProjects((current) => current.map((project) => (
                             project.id === projectId ? { ...project, name } : project
                           )));
                           antMessage.success("名称修改成功");
@@ -3318,7 +3336,7 @@ function ConversationWorkspace({
                     onFillComposerPrompt={(prompt) => composerPromptRef.current?.(prompt)}
                     onProjectApplicationsChange={!isStandaloneConversation
                       ? (applicationIds) => {
-                          setProjectList((current) => current.map((project) => (
+                          updateUserProjects((current) => current.map((project) => (
                             project.id === activeProject.id
                               ? { ...project, applicationIds }
                               : project
