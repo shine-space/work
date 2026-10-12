@@ -15,5 +15,5 @@ test("public root opens without the Argus login screen", async () => {
 test("GitHub Pages builds assets below the repository path", async () => {
   const viteConfig = await readFile(resolve(projectRoot, "vite.config.ts"), "utf8");
 
-  assert.match(viteConfig, /process\.env\.GITHUB_ACTIONS\s*\?\s*["']\/Work\/["']/);
+  assert.match(viteConfig, /process\.env\.GITHUB_ACTIONS\s*\?\s*["']\/work\/["']/);
 });
