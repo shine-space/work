@@ -1,16 +1,19 @@
 {
-  "name": "argus-assistant-ui-antd",
+  "name": "argus-assistant-ui-public",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test": "node --test scripts/*.test.mjs",
+    "test": "node --test scripts/public-direct-access.test.mjs",
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "build": "tsc -b && tsc --noEmit -p tsconfig.functions.json && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test:function": "node --experimental-strip-types scripts/test-chat-function.mjs"
   },
   "dependencies": {
     "@assistant-ui/react": "0.15.20",
+    "@hugeicons/core-free-icons": "^4.3.5",
+    "@hugeicons/react": "^1.1.10",
     "antd": "6.6.4",
     "cambio": "^1.1.5",
     "lucide-react": "^1.47.0",

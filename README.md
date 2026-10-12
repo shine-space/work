@@ -1,10 +1,8 @@
-# Argus assistant-ui + Ant Design preview
+# Argus 数字员工公网版
 
 Standalone user-facing Agent conversation prototype. It uses assistant-ui for
 the conversation runtime and accessibility primitives, while Ant Design owns
-the visible component system and consumes a local snapshot of the Argus theme. The
-workspace shell is a clean-room, Argus-branded reconstruction of the structural
-patterns observed in Coze; see `NOTES.md` for source and license boundaries.
+the visible component system and consumes a local snapshot of the Argus theme.
 
 ## Run
 
@@ -13,19 +11,32 @@ pnpm install
 pnpm dev
 ```
 
-Open `http://127.0.0.1:5174/office/overview` when running this repository by
-itself. The Argus management console proxies the same workspace at
-`http://127.0.0.1:5173/office/overview`, so switching surfaces keeps one origin.
+Open `http://127.0.0.1:5175`.
 
 Copy `.env.example` to `.env.local` when the application-building workspace is
 hosted separately, then set `VITE_APPLICATION_STUDIO_URL` to its full URL.
-Set `VITE_APP_BASE_PATH` only when the user workspace is mounted at a different
-path; local Argus development uses `/office/`.
 
 The conversation execution boundary is defined in
-[`docs/runtime-integration.md`](docs/runtime-integration.md). The preview uses a
-deterministic mock runtime by default; a backend can implement the same
-normalized event contract without coupling page components to internal DTOs.
+[`docs/runtime-integration.md`](docs/runtime-integration.md). The public build
+uses the same-origin `/api/chat` Makers Cloud Function and normalizes its SSE
+events before they reach the page components.
+
+## EdgeOne Makers deployment
+
+- Project root: repository root (`.`)
+- Install: `pnpm install --frozen-lockfile`
+- Build: `pnpm run build`
+- Output: `dist`
+- Node.js: `22.11.0`
+
+Configure these as server-side Makers environment variables. Do not prefix them
+with `VITE_` and do not commit their values:
+
+```ini
+MAKERS_MODELS_KEY=<created in Makers Models>
+AI_GATEWAY_BASE_URL=https://ai-gateway.edgeone.link/v1
+AI_GATEWAY_MODEL=@makers/deepseek-v4-flash
+```
 
 ## Pages
 
@@ -43,12 +54,13 @@ normalized event contract without coupling page components to internal DTOs.
 
 ## Boundaries
 
-- The model response is a deterministic local stream; no credentials or remote
-  model service are required.
-- User-created projects and their configuration persist per workspace in browser storage.
-- Conversation rename, removal and attachment selection remain prototype state unless backed by an Argus command record.
+- The browser never receives the model key. Model calls are made only by
+  `cloud-functions/api/chat.ts` and streamed back over the same origin.
+- Application, project, Agent, project/conversation rename, delete and conversation attachment selection are
+  prototype state only and reset on reload. Seeded project and conversation URLs
+  remain directly addressable.
 - Work-file folders and uploads are the exception: they persist locally in the current browser and do not call an Argus file API.
 - `src/theme-assets/` contains the theme, typography and radius snapshots needed
   to run this project independently from the Argus monorepo.
-- A production integration should replace the external-store callbacks with
-  Argus conversation APIs and the existing Agent SSE contract.
+- Conversation and project persistence remain browser-local in this first
+  public version; the model response itself is live.

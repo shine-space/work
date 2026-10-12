@@ -1,5 +1,5 @@
-import { ArgusApplicationRuntime } from "./argus-runtime";
 import { HttpApplicationRuntime } from "./http-runtime";
+import { MakersApplicationRuntime } from "./makers-runtime";
 import { MockApplicationRuntime } from "./mock-runtime";
 import type { ApplicationRuntime } from "./types";
 
@@ -15,15 +15,10 @@ export type {
 } from "./types";
 
 export function createApplicationRuntime(): ApplicationRuntime {
-  const mode = import.meta.env.VITE_RUNTIME_MODE || "argus";
-  if (mode === "argus") {
-    const workspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_argus_default";
-    return new ArgusApplicationRuntime({
-      baseUrl: import.meta.env.VITE_RUNTIME_BASE_URL || "/api",
-      workspaceId,
-    });
+  if (import.meta.env.VITE_RUNTIME_MODE === "mock") {
+    return new MockApplicationRuntime();
   }
-  if (mode === "http") {
+  if (import.meta.env.VITE_RUNTIME_MODE === "http") {
     return new HttpApplicationRuntime({
       baseUrl: import.meta.env.VITE_RUNTIME_BASE_URL || "/api",
       runPath: import.meta.env.VITE_RUNTIME_RUN_PATH || "/v1/runtime/runs/stream",
@@ -31,5 +26,5 @@ export function createApplicationRuntime(): ApplicationRuntime {
       resumePath: import.meta.env.VITE_RUNTIME_RESUME_PATH || "/v1/runtime/runs/:runId/resume",
     });
   }
-  return new MockApplicationRuntime();
+  return new MakersApplicationRuntime(import.meta.env.VITE_MAKERS_CHAT_URL || "/api/chat");
 }

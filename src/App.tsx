@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
-import { SharedAccountOverlay } from './SharedAccountOverlay';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import {
   ActionBarPrimitive,
   AssistantRuntimeProvider,
@@ -81,7 +80,6 @@ import {
   ListCollapse,
   ListChevronsDownUp,
   ListFilter,
-  ListMinus,
   LayoutGrid,
   List,
   Languages,
@@ -146,11 +144,8 @@ import {
   type TeamResourceGroup,
 } from "./data";
 import FolderFloat from "./components/FolderFloat";
+import ThoughtLine from "./components/ThoughtLine";
 import { createApplicationRuntime, type RuntimeEvent } from "./runtime";
-import { hasArgusSession, loginArgus } from "./runtime/argus-api";
-import { getActiveTeam, getUserTeams, initializeTeamScope, selectTeam, teamStorageKey } from "./runtime/team-scope";
-import { isCurrentTeamSkillTarget } from "./runtime/skill-install-scope";
-import { loadArgusUserData, type ArgusBindingView, type ArgusCatalogApplication, type ArgusSkillCatalogItem, type ArgusUserData } from "./runtime/argus-data";
 import { createTheme } from "./theme";
 
 const { Content } = Layout;
@@ -190,101 +185,15 @@ type ConversationTaskState = {
   participants: ConversationTaskParticipant[];
   errorMessage?: string;
 };
+type MessageProcessStatus = "running" | "completed" | "failed" | "cancelled";
+type MessageProcessMetadata = {
+  startedAt: number;
+  completedAt?: number;
+  status: MessageProcessStatus;
+};
 const SHOW_TASK_ISLAND_PROFILE_ON_HOVER = false;
 const TASK_ISLAND_IDLE_HIDE_DELAY = 10_000;
 const applicationRuntime = createApplicationRuntime();
-const argusRuntimeEnabled = applicationRuntime.kind === "argus";
-const argusRuntimeBaseUrl = import.meta.env.VITE_RUNTIME_BASE_URL || "/api";
-const argusWorkspaceId = import.meta.env.VITE_ARGUS_WORKSPACE_ID?.trim() || "ws_argus_default";
-const scopedStorage = {
-  getItem: (key: string) => window.localStorage.getItem(argusRuntimeEnabled ? teamStorageKey(key) : key),
-  setItem: (key: string, value: string) => window.localStorage.setItem(argusRuntimeEnabled ? teamStorageKey(key) : key, value),
-};
-if (argusRuntimeEnabled) {
-  teamResourceGroups.splice(0);
-  generatedFiles.splice(0);
-}
-const USER_PROJECTS_STORAGE_KEY = `argus-user-projects-v1:${argusWorkspaceId}`;
-const HIDDEN_NAVIGATION_STORAGE_KEY = `argus:hidden-navigation-keys:${argusWorkspaceId}`;
-const DELETED_CONVERSATIONS_STORAGE_KEY = `argus:deleted-conversation-ids:${argusWorkspaceId}`;
-const DIGITAL_EMPLOYEE_ALIASES_STORAGE_KEY = `argus:digital-employee-aliases:${argusWorkspaceId}`;
-const applicationStudioUrl = import.meta.env.VITE_APPLICATION_STUDIO_URL?.trim()
-  || `${window.location.protocol}//${window.location.hostname}:5173/applications/studio`;
-
-function readUserProjects(): Project[] {
-  try {
-    const parsed = JSON.parse(scopedStorage.getItem(USER_PROJECTS_STORAGE_KEY) ?? "[]") as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is Project => (
-      typeof item === "object"
-      && item !== null
-      && typeof (item as Project).id === "string"
-      && typeof (item as Project).name === "string"
-      && typeof (item as Project).code === "string"
-      && typeof (item as Project).description === "string"
-    ));
-  } catch {
-    return [];
-  }
-}
-
-function saveUserProjects(projectsToSave: Project[]) {
-  scopedStorage.setItem(USER_PROJECTS_STORAGE_KEY, JSON.stringify(projectsToSave));
-}
-
-function readHiddenNavigationKeys(): string[] {
-  try {
-    const parsed = JSON.parse(scopedStorage.getItem(HIDDEN_NAVIGATION_STORAGE_KEY) ?? "[]") as unknown;
-    return Array.isArray(parsed)
-      ? parsed.filter((key): key is string => typeof key === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function readDeletedConversationIds(): string[] {
-  try {
-    const parsed = JSON.parse(scopedStorage.getItem(DELETED_CONVERSATIONS_STORAGE_KEY) ?? "[]") as unknown;
-    return Array.isArray(parsed)
-      ? parsed.filter((id): id is string => typeof id === "string")
-      : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveDeletedConversationIds(ids: string[]) {
-  scopedStorage.setItem(DELETED_CONVERSATIONS_STORAGE_KEY, JSON.stringify(ids));
-}
-
-function readDigitalEmployeeAliases(): Record<string, string> {
-  try {
-    const parsed = JSON.parse(scopedStorage.getItem(DIGITAL_EMPLOYEE_ALIASES_STORAGE_KEY) ?? "{}") as unknown;
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
-    return Object.fromEntries(
-      Object.entries(parsed)
-        .filter((entry): entry is [string, string] => (
-          typeof entry[0] === "string"
-          && typeof entry[1] === "string"
-          && Boolean(entry[0].trim())
-          && Boolean(entry[1].trim())
-        ))
-        .map(([applicationId, alias]) => [applicationId, alias.trim()]),
-    );
-  } catch {
-    return {};
-  }
-}
-
-function saveDigitalEmployeeAlias(applicationId: string, alias: string) {
-  const normalizedAlias = alias.trim();
-  if (!applicationId || !normalizedAlias) return;
-  scopedStorage.setItem(DIGITAL_EMPLOYEE_ALIASES_STORAGE_KEY, JSON.stringify({
-    ...readDigitalEmployeeAliases(),
-    [applicationId]: normalizedAlias,
-  }));
-}
 
 const taskStatusPriority: Record<ConversationTaskState["status"], number> = {
   waiting: 4,
@@ -321,15 +230,16 @@ function shouldShowNavigationTask(
 }
 
 
-const conversationHistoryMenuItems: MenuProps["items"] = [
+const conversationMoreMenuItems: MenuProps["items"] = [
   { key: "rename", icon: <Pencil size={14} />, label: "重命名" },
-  { key: "delete", danger: true, icon: <Trash2 size={14} />, label: "删除" },
+  { key: "archive", icon: <Archive size={14} />, label: "归档（演示）", disabled: true },
+  { type: "divider" },
+  { key: "delete", icon: <Trash2 size={14} />, label: "删除", danger: true },
 ];
 
 const getNavigationConversationMenuItems = (pinned: boolean): MenuProps["items"] => [
   { key: "pin", icon: pinned ? <PinOff size={14} /> : <Pin size={14} />, label: pinned ? "取消置顶" : "置顶" },
-  { key: "rename", icon: <Pencil size={14} />, label: "重命名" },
-  { key: "remove", icon: <ListMinus size={14} />, label: "从列表中移除" },
+  ...conversationMoreMenuItems,
 ];
 
 const getNavigationProjectMenuItems = (pinned: boolean): MenuProps["items"] => [
@@ -339,6 +249,11 @@ const getNavigationProjectMenuItems = (pinned: boolean): MenuProps["items"] => [
   { key: "archive", danger: true, icon: <Archive size={14} />, label: "归档" },
 ];
 
+const teamOptions = [
+  { id: "argus", name: "Argus Workspace", shortName: "A", avatarColor: "var(--ui-color-neutral-8)" },
+  { id: "operations", name: "设备运维团队", shortName: "运", avatarColor: "var(--ui-color-team-green)" },
+  { id: "product", name: "产品研发团队", shortName: "研", avatarColor: "var(--ui-color-team-purple)" },
+];
 
 const projectMembers = [
   { id: "demo-user", name: "演示用户", shortName: "演", avatarColor: "var(--ui-color-blue-5)", role: "所有者" },
@@ -572,7 +487,7 @@ function AttachmentSourceMenu({
     });
     teamResourceGroups.forEach((group) => {
       group.resources.forEach((resource) => {
-        if (resource.knowledgeBaseId || !selectedResourceKeys.has(`team:${resource.id}`)) return;
+        if (!selectedResourceKeys.has(`team:${resource.id}`)) return;
         files.push(createSelectedFile(
           new File([`来自团队资源库：${resource.name}`], resource.name, { type: "text/plain" }),
           "resource",
@@ -676,8 +591,6 @@ function AttachmentSourceMenu({
                     return (
                       <label className="attachment-library-file-row" key={key}>
                         <Checkbox
-                          disabled={Boolean(resource.knowledgeBaseId)}
-                          title={resource.knowledgeBaseId ? "团队资源可在文件面板查看；尚未接入原文件引用" : undefined}
                           checked={selectedResourceKeys.has(key)}
                           onChange={(event) => toggleResource(key, event.target.checked)}
                         />
@@ -766,9 +679,6 @@ const skillIconCatalog = {
   calendar: CalendarDays,
   risk: ShieldAlert,
   translate: Languages,
-  file: FileText,
-  book: BookOpenCheck,
-  list: ListChecks,
 } as const;
 
 type SkillDefinition = {
@@ -779,11 +689,9 @@ type SkillDefinition = {
   icon: keyof typeof skillIconCatalog;
   iconColor: string;
   iconBackground: string;
-  capabilities?: string[];
-  usage?: string;
 };
 
-const skillCatalog: SkillDefinition[] = argusRuntimeEnabled ? [] : [
+const skillCatalog: SkillDefinition[] = [
   { id: "deep-research", name: "深度研究", category: "研究分析", description: "围绕复杂课题检索并交叉验证多来源资料，识别证据冲突与信息缺口，输出带出处、关键判断和后续建议的结构化研究结论。", icon: "telescope", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(135deg, #ff9b54 0%, #ff6f72 52%, #9a83ff 100%)" },
   { id: "content-creation", name: "内容研创", category: "内容创作", description: "结合目标、素材、受众与表达场景规划内容结构和叙事重点，生成可继续编辑的文章、方案、邮件或宣传内容初稿。", icon: "pen", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(45deg, #59c9d3 0%, #ff9c54 52%, #e97ac6 100%)" },
   { id: "webpage-reader", name: "网页速读", category: "研究分析", description: "快速阅读长网页并提炼核心观点、关键数据、事实依据和待跟进事项，帮助你在较短时间内掌握内容全貌与行动重点。", icon: "scan", iconColor: "var(--ui-color-white)", iconBackground: "linear-gradient(160deg, #ffd45c 0%, #ff8b4b 48%, #67b9ee 100%)" },
@@ -817,7 +725,7 @@ type SkillInstallation = {
 };
 
 const SKILL_INSTALLATIONS_STORAGE_KEY = "argus-skill-installations-v1";
-const initialSkillInstallations: SkillInstallation[] = argusRuntimeEnabled ? [] : [
+const initialSkillInstallations: SkillInstallation[] = [
   { skillId: "deep-research", targetType: "digital-employee", targetId: "enterprise-knowledge-manager" },
   { skillId: "data-insight", targetType: "project", targetId: "project-growth" },
   { skillId: "risk-scan", targetType: "project", targetId: "project-contract" },
@@ -825,7 +733,7 @@ const initialSkillInstallations: SkillInstallation[] = argusRuntimeEnabled ? [] 
 
 const readSkillInstallations = (): SkillInstallation[] => {
   try {
-    const storedValue = scopedStorage.getItem(SKILL_INSTALLATIONS_STORAGE_KEY);
+    const storedValue = window.localStorage.getItem(SKILL_INSTALLATIONS_STORAGE_KEY);
     if (!storedValue) return initialSkillInstallations;
     const parsedValue = JSON.parse(storedValue) as unknown;
     if (!Array.isArray(parsedValue)) return initialSkillInstallations;
@@ -855,69 +763,12 @@ const isSkillInstalledAtTarget = (
 type CatalogApplication = {
   id: string;
   name: string;
-  originalName?: string;
   category: ApplicationCardCategory;
   description: string;
   cover: string;
   avatar: string;
   contextId: ApplicationId;
-  skills?: readonly string[];
-  available?: boolean;
 };
-
-const skillCapabilityFallbacks: Record<SkillCardCategory, string[]> = {
-  研究分析: ["提取关键信息", "核验来源与依据", "输出结构化结论"],
-  内容创作: ["理解目标与素材", "组织内容结构", "生成可继续编辑的结果"],
-  办公效率: ["整理任务上下文", "提取责任与行动", "生成可执行清单"],
-  数据处理: ["规范数据口径", "识别异常与趋势", "输出可复核结果"],
-};
-
-function inferRealSkillCategory(skill: ArgusSkillCatalogItem): SkillCardCategory {
-  const searchable = `${skill.name} ${skill.skill_id}`.toLocaleLowerCase();
-  if (["数据", "表格", "excel", "xlsx", "问数", "报表", "统计"].some((keyword) => searchable.includes(keyword))) return "数据处理";
-  if (["创作", "写作", "演示", "ppt", "文案"].some((keyword) => searchable.includes(keyword))) return "内容创作";
-  if (["会议", "纪要", "行动", "工单", "考勤", "周报", "任务", "跟进"].some((keyword) => searchable.includes(keyword))) return "办公效率";
-  return "研究分析";
-}
-
-function getRealSkillVisual(skill: ArgusSkillCatalogItem): Pick<SkillDefinition, "icon" | "iconColor" | "iconBackground"> {
-  const searchable = `${skill.name} ${skill.skill_id}`.toLocaleLowerCase();
-  const match = ([
-    { keywords: ["pdf"], icon: "file", background: "linear-gradient(135deg, #ff9b54 0%, #ff6f72 52%, #9a83ff 100%)" },
-    { keywords: ["word", "文档创作", "内容", "写作"], icon: "pen", background: "linear-gradient(45deg, #59c9d3 0%, #ff9c54 52%, #e97ac6 100%)" },
-    { keywords: ["表格", "电子表格", "excel", "xlsx"], icon: "table", background: "linear-gradient(315deg, #ff8f4c 0%, #4fcaa4 48%, #5fa5ea 100%)" },
-    { keywords: ["演示", "ppt", "幻灯片"], icon: "file", background: "linear-gradient(70deg, #f0b946 0%, #ff8848 48%, #e879c0 100%)" },
-    { keywords: ["会议", "纪要"], icon: "notes", background: "linear-gradient(215deg, #ff9c55 0%, #4fcbd2 48%, #6f89e8 100%)" },
-    { keywords: ["审阅", "校对", "审核"], icon: "review", background: "linear-gradient(145deg, #9dcc62 0%, #55c7a1 52%, #ff9851 100%)" },
-    { keywords: ["行动", "工单", "任务"], icon: "list", background: "linear-gradient(145deg, #8b87f4 0%, #4fc4d2 52%, #72c887 100%)" },
-    { keywords: ["考勤", "日程", "周报"], icon: "calendar", background: "linear-gradient(120deg, #ffb44f 0%, #ff7d67 52%, #ef82b7 100%)" },
-    { keywords: ["检索", "知识"], icon: "book", background: "linear-gradient(160deg, #ffd45c 0%, #ff8b4b 48%, #67b9ee 100%)" },
-    { keywords: ["文件"], icon: "scan", background: "linear-gradient(155deg, #72c6e8 0%, #7c8ff0 48%, #cf7ed9 100%)" },
-    { keywords: ["数据", "问数", "分析"], icon: "chart", background: "linear-gradient(25deg, #9a83ff 0%, #5ca7ef 48%, #ff9450 100%)" },
-  ] as const).find((visual) => visual.keywords.some((keyword) => searchable.includes(keyword)));
-  return {
-    icon: match?.icon ?? "telescope",
-    iconColor: "var(--ui-color-white)",
-    iconBackground: match?.background ?? "linear-gradient(135deg, #ff9b54 0%, #ff6f72 52%, #9a83ff 100%)",
-  };
-}
-
-function getRealSkillDefinition(skill: ArgusSkillCatalogItem): SkillDefinition {
-  const category = inferRealSkillCategory(skill);
-  const clauses = skill.description
-    .split(/[，。；]/u)
-    .map((clause) => clause.replace(/^并/u, "").trim())
-    .filter((clause) => clause.length >= 4 && clause.length <= 34);
-  return {
-    id: skill.skill_id,
-    name: skill.name,
-    category,
-    description: skill.description,
-    ...getRealSkillVisual(skill),
-    capabilities: [...new Set([...clauses, ...skillCapabilityFallbacks[category]])].slice(0, 3),
-    usage: skill.use_when?.trim() || `适用于需要${skill.name}能力的对话和工作任务。`,
-  };
-}
 
 const applicationCatalogSource: CatalogApplication[] = [
   { id: "senior-developer", name: "高级开发工程师", category: "技术研发", description: "解决复杂系统设计与技术攻坚问题，提升架构质量、研发效率和交付稳定性", cover: "/application-covers/01-高级开发工程师.png", avatar: "/application-avatars/01-高级开发工程师.png", contextId: "project" },
@@ -942,132 +793,11 @@ const applicationCatalogSource: CatalogApplication[] = [
   { id: "enterprise-knowledge-manager", name: "企业知识管理员", category: "知识研究", description: "建立知识分类、治理与更新机制，提升企业信息检索、复用和传承效率", cover: "/application-covers/20-企业知识管理员.png", avatar: "/application-avatars/20-企业知识管理员.png", contextId: "project" },
 ];
 
-const applicationCatalog: CatalogApplication[] = (argusRuntimeEnabled ? [] : applicationCatalogSource).map((application) => ({
+const applicationCatalog: CatalogApplication[] = applicationCatalogSource.map((application) => ({
   ...application,
   cover: getPublicAssetPath(application.cover),
   avatar: getPublicAssetPath(application.avatar),
 }));
-
-function getRealCatalogApplication(application: ArgusCatalogApplication, binding?: ArgusBindingView): CatalogApplication {
-  const template = applicationCatalogSource.find((item) => item.name === application.name);
-  const representative = application.manifest.representatives?.find((item) => item.primary)
-    ?? application.manifest.representatives?.[0];
-  const configuredCategory = application.manifest.category?.trim();
-  const category = applicationCategories.includes(configuredCategory as ApplicationCategory)
-    && configuredCategory !== "全部"
-    ? configuredCategory as ApplicationCardCategory
-    : template?.category ?? "知识研究";
-  const fallbackAsset = applicationCatalogSource[applicationCatalogSource.length - 1];
-  return {
-    id: application.application_id,
-    name: application.name,
-    originalName: application.name,
-    category,
-    description: application.manifest.description?.trim()
-      || representative?.description?.trim()
-      || template?.description
-      || "由管理端发布并授权的数字员工",
-    cover: getPublicAssetPath(template?.cover ?? fallbackAsset.cover),
-    avatar: getPublicAssetPath(template?.avatar ?? fallbackAsset.avatar),
-    contextId: "conversation",
-    skills: (application.manifest.capabilities ?? [])
-      .map((capability) => capability.title?.trim() || capability.key.trim())
-      .filter(Boolean)
-      .slice(0, 3),
-    available: Boolean(binding),
-  };
-}
-
-function formatRealUpdatedAt(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  const elapsedMinutes = Math.max(0, Math.round((Date.now() - date.getTime()) / 60_000));
-  if (elapsedMinutes < 1) return "刚刚";
-  if (elapsedMinutes < 60) return `${elapsedMinutes} 分钟前`;
-  if (elapsedMinutes < 1_440) return `${Math.floor(elapsedMinutes / 60)} 小时前`;
-  return date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric" });
-}
-
-function applyArgusUserData(data: ArgusUserData, userProjects: Project[]) {
-  const digitalEmployeeAliases = readDigitalEmployeeAliases();
-  const usableBindings = data.bindings.filter((item) => (
-    item.available
-    && item.binding.enabled
-    && item.revision.enabled
-    && item.access?.executable !== false
-    && Boolean(item.manifest.representatives?.length)
-  ));
-  const bindingByApplication = new Map<string, ArgusBindingView>();
-  usableBindings.forEach((binding) => {
-    const applicationId = binding.deployment_revision.application_id;
-    const current = bindingByApplication.get(applicationId);
-    if (!current || (current.binding.scope_type !== "workspace" && binding.binding.scope_type === "workspace")) {
-      bindingByApplication.set(applicationId, binding);
-    }
-  });
-  const realCatalog = data.applications.map((application) => (
-    getRealCatalogApplication(application, bindingByApplication.get(application.application_id))
-  ));
-  applicationCatalog.splice(0, applicationCatalog.length, ...realCatalog);
-  skillCatalog.splice(0, skillCatalog.length, ...data.skills.map(getRealSkillDefinition));
-
-  const catalogByApplication = new Map(realCatalog.map((item) => [item.id, item]));
-  const catalogByBinding = new Map(usableBindings.flatMap((binding) => {
-    const catalog = catalogByApplication.get(binding.deployment_revision.application_id);
-    return catalog ? [[binding.binding.participation_binding_id, catalog] as const] : [];
-  }));
-  const applicationIdByBinding = new Map(usableBindings.map((binding) => (
-    [binding.binding.participation_binding_id, binding.deployment_revision.application_id] as const
-  )));
-  const migratedProjects = userProjects.map((project) => ({
-    ...project,
-    applicationIds: project.applicationIds?.map((id) => applicationIdByBinding.get(id) ?? id),
-  }));
-  if (JSON.stringify(migratedProjects) !== JSON.stringify(userProjects)) saveUserProjects(migratedProjects);
-  const projectIds = new Set(migratedProjects.map((project) => project.id));
-  const realConversations: Conversation[] = data.work
-    .filter((item) => catalogByBinding.has(item.participation_binding_id))
-    .filter((item) => item.scope_type !== "project" || projectIds.has(item.scope_id))
-    .map((item) => {
-      const catalog = catalogByBinding.get(item.participation_binding_id)!;
-      const turns = item.detail.employee_turns ?? [];
-      const messages = turns.flatMap<DemoMessage>((turn, index) => {
-        const createdAt = new Date(item.updated_at || item.created_at);
-        const result: DemoMessage[] = [];
-        if (turn.user_input?.trim()) result.push({
-          id: `${item.command_id}-${index}-user`,
-          role: "user",
-          content: [{ type: "text", text: turn.user_input }],
-          createdAt,
-        });
-        if (turn.answer?.trim()) result.push({
-          id: `${item.command_id}-${index}-assistant`,
-          role: "assistant",
-          content: [{ type: "text", text: turn.answer }],
-          createdAt,
-          metadata: { custom: { catalogApplicationId: catalog.id } },
-        });
-        return result;
-      });
-      const projectId = item.scope_type === "project" && projectIds.has(item.scope_id)
-        ? item.scope_id
-        : null;
-      const conversationId = `command-${item.command_id}`;
-      scopedStorage.setItem(`argus-user-client-command:${conversationId}`, item.command_id);
-      return {
-        id: conversationId,
-        projectId,
-        agentId: catalog.id,
-        applicationId: "conversation",
-        catalogApplicationId: catalog.id,
-        applicationAlias: digitalEmployeeAliases[catalog.id] ?? null,
-        title: item.capability_title?.trim() || item.application_name,
-        updatedAt: formatRealUpdatedAt(item.updated_at || item.created_at),
-        messages,
-      };
-    });
-  return { conversations: realConversations, projects: migratedProjects };
-}
 
 const applicationSkillTags: Record<CatalogApplication["id"], readonly [string, string, string]> = {
   "senior-developer": ["架构设计", "技术攻坚", "代码评审"],
@@ -1092,16 +822,8 @@ const applicationSkillTags: Record<CatalogApplication["id"], readonly [string, s
   "enterprise-knowledge-manager": ["知识分类", "内容治理", "检索复用"],
 };
 
-function getApplicationSkillTags(application: CatalogApplication): readonly string[] {
-  if (application.skills?.length) return application.skills;
-  const direct = applicationSkillTags[application.id];
-  if (direct?.length) return direct;
-  const template = applicationCatalogSource.find((item) => item.name === application.originalName);
-  return template ? applicationSkillTags[template.id] ?? [] : [];
-}
-
 function getApplicationStarterPrompts(application: CatalogApplication) {
-  const [primarySkill = "专业协作", secondarySkill = "问题分析", tertiarySkill = "方案优化"] = getApplicationSkillTags(application);
+  const [primarySkill, secondarySkill, tertiarySkill] = applicationSkillTags[application.id];
   return [
     `请帮我完成一项${primarySkill}任务，并整理清晰的执行步骤`,
     `请分析当前问题，运用${secondarySkill}给出专业建议`,
@@ -1215,30 +937,19 @@ function NavigationProjectIcon({ project }: { project: Project }) {
   );
 }
 
-const getConversationCatalogTemplate = (conversation: Conversation) => (
-  applicationCatalog.find((item) => item.id === conversation.catalogApplicationId)
-    ?? applicationCatalog.find((item) => item.contextId === conversation.applicationId)
+const getConversationCatalogApplication = (conversation: Conversation) => (
+  applicationCatalog.find((application) => application.id === conversation.catalogApplicationId)
+  ?? applicationCatalog.find((application) => application.contextId === conversation.applicationId)
 );
 
-const getConversationCatalogApplication = (conversation: Conversation) => {
-  const application = getConversationCatalogTemplate(conversation);
-  const alias = conversation.applicationAlias?.trim();
-  return application && alias ? { ...application, name: alias, originalName: application.name } : application;
-};
-
 function getCreatedDigitalEmployees(conversations: Conversation[]) {
-  const createdApplications = new Map<string, CatalogApplication>();
-  conversations
-    .filter((conversation) => conversation.projectId === null)
-    .forEach((conversation) => {
-      const application = getConversationCatalogApplication(conversation);
-      if (application && !createdApplications.has(application.id)) {
-        createdApplications.set(application.id, application);
-      }
-    });
-  return applicationCatalog
-    .filter((application) => createdApplications.has(application.id))
-    .map((application) => createdApplications.get(application.id) ?? application);
+  const createdIds = new Set(
+    conversations
+      .filter((conversation) => conversation.projectId === null)
+      .map((conversation) => getConversationCatalogApplication(conversation)?.id)
+      .filter((applicationId): applicationId is string => Boolean(applicationId)),
+  );
+  return applicationCatalog.filter((application) => createdIds.has(application.id));
 }
 
 function NavigationConversationIcon({ conversation, size }: { conversation: Conversation; size: number }) {
@@ -1438,9 +1149,7 @@ function parseWorkspaceRoute(pathname: string): WorkspaceRoute {
   if (projectMatch) {
     return { page: "project", projectId: decodeURIComponent(projectMatch[1]) };
   }
-  return argusRuntimeEnabled
-    ? { page: "applications" }
-    : { page: "project", projectId: projects[0].id };
+  return { page: "project", projectId: projects[0].id };
 }
 
 function getText(content: AppendMessage["content"]) {
@@ -1463,16 +1172,46 @@ function createMessage(
   role: "user" | "assistant",
   text: string,
   catalogApplicationId?: string | null,
+  process?: MessageProcessMetadata,
 ): DemoMessage {
+  const customMetadata = role === "assistant"
+    ? {
+        ...(catalogApplicationId ? { catalogApplicationId } : {}),
+        ...(process
+          ? {
+              processStartedAt: process.startedAt,
+              processCompletedAt: process.completedAt,
+              processStatus: process.status,
+            }
+          : {}),
+      }
+    : undefined;
   return {
     id,
     role,
     content: [{ type: "text", text }],
     createdAt: new Date(),
-    ...(role === "assistant" && catalogApplicationId
-      ? { metadata: { custom: { catalogApplicationId } } }
+    ...(customMetadata && Object.keys(customMetadata).length > 0
+      ? { metadata: { custom: customMetadata } }
       : {}),
   };
+}
+
+function updateMessageProcessStatus(message: DemoMessage, status: MessageProcessStatus) {
+  if (message.role !== "assistant") return message;
+  const custom = message.metadata?.custom ?? {};
+  if (typeof custom.processStartedAt !== "number") return message;
+  return {
+    ...message,
+    metadata: {
+      ...message.metadata,
+      custom: {
+        ...custom,
+        processStatus: status,
+        processCompletedAt: Date.now(),
+      },
+    },
+  } satisfies DemoMessage;
 }
 
 function createIdempotencyKey(conversationId: string) {
@@ -1492,17 +1231,10 @@ function isUnsentConversationDraft(conversation: Conversation) {
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(false);
-  const [argusSessionVersion, setArgusSessionVersion] = useState(0);
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(
     () => window.localStorage.getItem("argus-sidebar-collapsed") === "true",
   );
-
-  useEffect(() => {
-    const handleInvalidSession = () => setArgusSessionVersion((value) => value + 1);
-    window.addEventListener("argus:auth-invalid", handleInvalidSession);
-    return () => window.removeEventListener("argus:auth-invalid", handleInvalidSession);
-  }, []);
 
   useEffect(() => {
     window.localStorage.setItem("argus-sidebar-collapsed", String(sidebarCollapsed));
@@ -1511,77 +1243,16 @@ export default function App() {
   return (
     <ConfigProvider button={{ autoInsertSpace: false }} locale={zhCN} theme={createTheme(darkMode)}>
       <AntApp>
-        {argusRuntimeEnabled && !hasArgusSession() ? (
-          <ArgusLoginScreen onAuthenticated={() => setArgusSessionVersion((value) => value + 1)} />
-        ) : (
-          <TeamScopeGate key={argusSessionVersion}>
-          <ConversationWorkspace
-            darkMode={darkMode}
-            mobileNavigationOpen={mobileNavigationOpen}
-            sidebarCollapsed={sidebarCollapsed}
-            onDarkModeChange={setDarkMode}
-            onMobileNavigationChange={setMobileNavigationOpen}
-            onSidebarCollapsedChange={setSidebarCollapsed}
-          />
-          </TeamScopeGate>
-        )}
+        <ConversationWorkspace
+          darkMode={darkMode}
+          mobileNavigationOpen={mobileNavigationOpen}
+          sidebarCollapsed={sidebarCollapsed}
+          onDarkModeChange={setDarkMode}
+          onMobileNavigationChange={setMobileNavigationOpen}
+          onSidebarCollapsedChange={setSidebarCollapsed}
+        />
       </AntApp>
     </ConfigProvider>
-  );
-}
-
-function TeamScopeGate({ children }: { children: ReactNode }) {
-  const [ready, setReady] = useState(!argusRuntimeEnabled);
-  const [error, setError] = useState("");
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    if (!argusRuntimeEnabled) return;
-    const controller = new AbortController();
-    setError("");
-    void initializeTeamScope(argusRuntimeBaseUrl, argusWorkspaceId, controller.signal)
-      .then(() => { if (!controller.signal.aborted) setReady(true); })
-      .catch(reason => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "团队读取失败"); });
-    return () => controller.abort();
-  }, [revision]);
-  if (ready) return children;
-  return <main className="runtime-login-page"><section role="status">
-    {error || "正在读取所属团队…"}
-    {error ? <Button onClick={() => setRevision(value => value + 1)}>重试</Button> : null}
-  </section></main>;
-}
-
-function ArgusLoginScreen({ onAuthenticated }: { onAuthenticated: () => void }) {
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const submit = async (values: { email: string; password: string }) => {
-    setSubmitting(true);
-    setError("");
-    try {
-      await loginArgus(argusRuntimeBaseUrl, values.email.trim(), values.password);
-      onAuthenticated();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "登录失败，请稍后重试。");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-  return (
-    <main className="runtime-login-page">
-      <section className="runtime-login-card" aria-labelledby="runtime-login-title">
-        <img src={getPublicAssetPath("logo-collapsed.png")} alt="" aria-hidden="true" />
-        <div><Title id="runtime-login-title" level={3}>登录朝夕智能</Title><Text type="secondary">使用管理端账号读取已授权的数字员工与工作记录。</Text></div>
-        {error ? <div className="runtime-login-error" role="alert">{error}</div> : null}
-        <Form layout="vertical" onFinish={submit} requiredMark={false}>
-          <Form.Item label="邮箱" name="email" rules={[{ required: true, message: "请输入邮箱" }]}>
-            <Input autoComplete="username" placeholder="请输入邮箱" />
-          </Form.Item>
-          <Form.Item label="密码" name="password" rules={[{ required: true, message: "请输入密码" }]}>
-            <Input.Password autoComplete="current-password" placeholder="请输入密码" />
-          </Form.Item>
-          <Button block htmlType="submit" loading={submitting} type="primary">登录</Button>
-        </Form>
-      </section>
-    </main>
   );
 }
 
@@ -1592,31 +1263,6 @@ type ConversationWorkspaceProps = {
   onDarkModeChange: (value: boolean) => void;
   onMobileNavigationChange: (value: boolean) => void;
   onSidebarCollapsedChange: (value: boolean) => void;
-};
-
-const getConversationNavigationKey = (conversation: Conversation) => {
-  const application = conversation.projectId === null
-    ? getConversationCatalogApplication(conversation)
-    : undefined;
-  return application ? `application:${application.id}` : `conversation:${conversation.id}`;
-};
-
-const emptyProject: Project = {
-  id: "",
-  name: "暂无群组项目",
-  code: "",
-  description: "",
-  applicationIds: [],
-};
-
-const emptyConversation: Conversation = {
-  id: "empty-conversation",
-  projectId: null,
-  agentId: agents[0]?.id ?? "",
-  applicationId: null,
-  title: "新对话",
-  updatedAt: "",
-  messages: [],
 };
 
 function ConversationWorkspace({
@@ -1630,12 +1276,8 @@ function ConversationWorkspace({
   const { message: antMessage, modal } = AntApp.useApp();
   const { token: themeToken } = antdTheme.useToken();
   const reduceTaskIslandMotion = useReducedMotion();
-  const [projectList, setProjectList] = useState<Project[]>(argusRuntimeEnabled ? readUserProjects : () => projects);
-  const [conversations, setConversations] = useState(argusRuntimeEnabled ? [] : initialConversations);
-  const [hiddenNavigationKeys, setHiddenNavigationKeys] = useState<string[]>(readHiddenNavigationKeys);
-  const [argusDataLoaded, setArgusDataLoaded] = useState(!argusRuntimeEnabled);
-  const [argusDataReloadRevision, setArgusDataReloadRevision] = useState(0);
-  const argusDataErrorNotifiedRef = useRef(false);
+  const [projectList, setProjectList] = useState<Project[]>(projects);
+  const [conversations, setConversations] = useState(initialConversations);
   const [skillInstallations, setSkillInstallations] = useState<SkillInstallation[]>(readSkillInstallations);
   const [pathname, setPathname] = useState(() => {
     const initialLocation = getWorkspacePathname(window.location.pathname);
@@ -1662,66 +1304,9 @@ function ConversationWorkspace({
   const composerPromptRef = useRef<((prompt: string) => void) | null>(null);
   const [taskIslandIdleVisible, setTaskIslandIdleVisible] = useState(false);
 
-  const updateUserProjects = useCallback((update: (current: Project[]) => Project[]) => {
-    setProjectList((current) => {
-      const next = update(current);
-      if (argusRuntimeEnabled) saveUserProjects(next);
-      return next;
-    });
-  }, []);
-
   useEffect(() => {
-    if (!argusRuntimeEnabled) return;
-    const controller = new AbortController();
-    let retryTimer: number | undefined;
-    const userProjects = readUserProjects();
-    applicationCatalog.splice(0, applicationCatalog.length);
-    skillCatalog.splice(0, skillCatalog.length);
-    setProjectList(userProjects);
-    teamResourceGroups.splice(0);
-    void loadArgusUserData(argusRuntimeBaseUrl, argusWorkspaceId, controller.signal, getActiveTeam()?.id ?? null)
-      .then((data) => {
-        if (controller.signal.aborted) return;
-        const realData = applyArgusUserData(data, userProjects);
-        teamResourceGroups.splice(0, teamResourceGroups.length, ...data.resources);
-        const deletedConversationIds = new Set(readDeletedConversationIds());
-        setProjectList(realData.projects);
-        setConversations(realData.conversations.filter((conversation) => (
-          !deletedConversationIds.has(conversation.id)
-        )));
-        setArgusDataLoaded(true);
-        argusDataErrorNotifiedRef.current = false;
-      })
-      .catch((reason) => {
-        if (controller.signal.aborted) return;
-        applicationCatalog.splice(0, applicationCatalog.length);
-        skillCatalog.splice(0, skillCatalog.length);
-        setProjectList(userProjects);
-        setConversations([]);
-        setArgusDataLoaded(true);
-        if (!argusDataErrorNotifiedRef.current) {
-          antMessage.error(reason instanceof Error ? reason.message : "管理端数据读取失败，将自动重试。");
-          argusDataErrorNotifiedRef.current = true;
-        }
-        if (hasArgusSession()) {
-          retryTimer = window.setTimeout(() => {
-            setArgusDataReloadRevision((current) => current + 1);
-          }, 5_000);
-        }
-      });
-    return () => {
-      controller.abort();
-      if (retryTimer !== undefined) window.clearTimeout(retryTimer);
-    };
-  }, [antMessage, argusDataReloadRevision]);
-
-  useEffect(() => {
-    scopedStorage.setItem(SKILL_INSTALLATIONS_STORAGE_KEY, JSON.stringify(skillInstallations));
+    window.localStorage.setItem(SKILL_INSTALLATIONS_STORAGE_KEY, JSON.stringify(skillInstallations));
   }, [skillInstallations]);
-
-  useEffect(() => {
-    scopedStorage.setItem(HIDDEN_NAVIGATION_STORAGE_KEY, JSON.stringify(hiddenNavigationKeys));
-  }, [hiddenNavigationKeys]);
 
   const installSkill = useCallback((
     skill: SkillDefinition,
@@ -1729,21 +1314,13 @@ function ConversationWorkspace({
     targetId: string,
     targetName: string,
   ) => {
-    if (argusRuntimeEnabled && !isCurrentTeamSkillTarget({
-      teamId: getActiveTeam()?.id ?? null,
-      employeeIds: getCreatedDigitalEmployees(conversations).map((application) => application.id),
-      projectIds: projectList.filter((project) => !project.archived).map((project) => project.id),
-    }, targetType, targetId)) {
-      antMessage.warning("只能安装到当前团队的数字员工或群组项目");
-      return;
-    }
     if (isSkillInstalledAtTarget(skillInstallations, skill.id, targetType, targetId)) return;
     setSkillInstallations((current) => [
       ...current,
       { skillId: skill.id, targetType, targetId },
     ]);
     antMessage.success(`${skill.name}已安装到${targetName}`);
-  }, [antMessage, conversations, projectList, skillInstallations]);
+  }, [antMessage, skillInstallations]);
 
   useEffect(() => {
     const handlePopState = () => setPathname(getWorkspacePathname(window.location.pathname));
@@ -1757,45 +1334,8 @@ function ConversationWorkspace({
     setPathname(nextPath);
   }, []);
 
-  const route = useMemo(() => parseWorkspaceRoute(pathname), [pathname]);
+  const route = parseWorkspaceRoute(pathname);
   const isStandaloneConversation = route.page === "standalone";
-  const activeProjectList = useMemo(
-    () => projectList.filter((project) => !project.archived),
-    [projectList],
-  );
-  const archivedProjectList = useMemo(
-    () => projectList.filter((project) => project.archived),
-    [projectList],
-  );
-
-  useEffect(() => {
-    if (!argusRuntimeEnabled || !argusDataLoaded) return;
-    if (route.page === "standalone") {
-      const exists = conversations.some((conversation) => (
-        conversation.id === route.conversationId && conversation.projectId === null
-      ));
-      if (!exists) navigateTo("/apps");
-      return;
-    }
-    if (route.page === "project" || route.page === "conversation") {
-      const projectExists = activeProjectList.some((project) => project.id === route.projectId);
-      if (!projectExists) {
-        navigateTo("/overview");
-        return;
-      }
-      if (route.page === "conversation") {
-        const conversationExists = conversations.some((conversation) => (
-          conversation.id === route.conversationId && conversation.projectId === route.projectId
-        ));
-        if (!conversationExists) navigateTo(`/projects/${route.projectId}`);
-      }
-      return;
-    }
-    if (route.page === "archiveProject") {
-      const exists = archivedProjectList.some((project) => project.id === route.projectId);
-      if (!exists) navigateTo("/archive");
-    }
-  }, [argusDataLoaded, archivedProjectList, conversations, navigateTo, route, activeProjectList]);
   const projectHomeVisible = false;
   const projectFilesOpen = projectWorkspaceTool === "files";
   const setProjectFilesOpen = useCallback((open: boolean) => {
@@ -1807,11 +1347,11 @@ function ConversationWorkspace({
   }, [route.page]);
 
   const activeProject =
-    activeProjectList.find(
+    projectList.find(
       (project) =>
         (route.page === "project" || route.page === "conversation") &&
         project.id === route.projectId,
-    ) ?? activeProjectList[0] ?? emptyProject;
+    ) ?? projectList[0];
   const standaloneConversations = conversations.filter((conversation) => conversation.projectId === null);
   const projectConversations = conversations.filter(
     (conversation) => conversation.projectId === activeProject.id,
@@ -1832,37 +1372,30 @@ function ConversationWorkspace({
             (conversation) =>
               conversation.id === route.conversationId && conversation.projectId === activeProject.id,
           )
-        : projectConversationHistory[0]) ?? conversations[0] ?? emptyConversation;
+        : projectConversationHistory[0]) ?? conversations[0];
   const activeConversationId = activeConversation.id;
   useEffect(() => {
     if (isUnsentConversationDraft(activeConversation)) setProjectWorkspaceTool(null);
   }, [activeConversation]);
   const activeAgent = agents.find((agent) => agent.id === activeConversation.agentId) ?? agents[0];
-  const createdDigitalEmployeeById = new Map(
-    getCreatedDigitalEmployees(conversations).map((application) => [application.id, application]),
-  );
-  const withCreatedDigitalEmployeeName = (application: CatalogApplication) => (
-    createdDigitalEmployeeById.get(application.id) ?? application
-  );
-  const activeProjectCatalogApplications = getProjectCatalogApplications(activeProject)
-    .map(withCreatedDigitalEmployeeName);
+  const activeProjectCatalogApplications = getProjectCatalogApplications(activeProject);
   const activeProjectAdministratorApplication = activeProjectCatalogApplications.find(
     (application) => application.id === activeProject.administratorApplicationId,
   ) ?? activeProjectCatalogApplications[0];
   const selectableCatalogApplications = isStandaloneConversation
-    ? applicationCatalog.map(withCreatedDigitalEmployeeName)
+    ? applicationCatalog
     : activeProjectCatalogApplications;
   const activePendingConversationTarget = pendingConversationTarget?.conversationId === activeConversationId
     ? pendingConversationTarget
     : null;
   const pendingTargetApplication = activePendingConversationTarget?.type === "application"
-    ? selectableCatalogApplications.find((application) => application.id === activePendingConversationTarget.targetId)
+    ? applicationCatalog.find((application) => application.id === activePendingConversationTarget.targetId)
     : undefined;
   const pendingTargetProject = activePendingConversationTarget?.type === "project"
     ? projectList.find((project) => project.id === activePendingConversationTarget.targetId)
     : undefined;
   const pendingTargetProjectApplications = pendingTargetProject
-    ? getProjectCatalogApplications(pendingTargetProject).map(withCreatedDigitalEmployeeName)
+    ? getProjectCatalogApplications(pendingTargetProject)
     : [];
   const pendingTargetProjectAdministrator = pendingTargetProjectApplications.find(
     (application) => application.id === pendingTargetProject?.administratorApplicationId,
@@ -1876,7 +1409,7 @@ function ConversationWorkspace({
       ?? activeProjectCatalogApplications[0]?.id
       ?? null;
   const activeStandaloneApplication = isStandaloneConversation
-    ? getConversationCatalogApplication(activeConversation)
+    ? applicationCatalog.find((application) => application.id === activeCatalogApplicationId)
     : undefined;
   const activeStandaloneApplicationName = activeStandaloneApplication?.name ?? "";
   const activeStandaloneApplicationConversations = activeStandaloneApplication
@@ -2027,16 +1560,15 @@ function ConversationWorkspace({
 
   useEffect(() => {
     if (
-      argusDataLoaded && activeConversation.id !== emptyConversation.id &&
       route.page === "standalone" &&
       activeConversation.projectId === null &&
       route.conversationId !== activeConversation.id
     ) {
       const nextPath = `/conversations/${activeConversation.id}`;
-      window.history.replaceState(null, "", getBrowserPath(nextPath));
+      window.history.replaceState(null, "", nextPath);
       setPathname(nextPath);
     }
-  }, [activeConversation.id, activeConversation.projectId, argusDataLoaded, route]);
+  }, [activeConversation.id, activeConversation.projectId, route]);
 
   const updateConversationMessages = useCallback(
     (conversationId: string, updater: (messages: DemoMessage[]) => DemoMessage[]) => {
@@ -2104,14 +1636,6 @@ function ConversationWorkspace({
       const participantResponders = new Map(
         taskParticipants.map((participant, index) => [participant.applicationId, responders[index]]),
       );
-      const removeEmptyRunMessages = () => {
-        const nextMessages = accumulatedMessages.filter((message) => (
-          !runMessageIds.has(message.id) || getStoredMessageText(message).trim().length > 0
-        ));
-        if (nextMessages.length === accumulatedMessages.length) return;
-        accumulatedMessages = nextMessages;
-        updateConversationMessages(conversationId, () => accumulatedMessages);
-      };
 
       const updateRuntimeTask = (event: RuntimeEvent) => {
         if (cancelledConversationRunsRef.current.has(conversationId)) return;
@@ -2153,11 +1677,17 @@ function ConversationWorkspace({
 
         if (event.type === "message.started") {
           const responder = participantResponders.get(event.participantId);
-          runMessageIds.add(event.messageId);
           if (!accumulatedMessages.some((message) => message.id === event.messageId)) {
+            runMessageIds.add(event.messageId);
             accumulatedMessages = [
               ...accumulatedMessages,
-              createMessage(event.messageId, "assistant", "", responder?.catalogApplicationId),
+              createMessage(
+                event.messageId,
+                "assistant",
+                "",
+                responder?.catalogApplicationId,
+                { startedAt: Date.now(), status: "running" },
+              ),
             ];
             updateConversationMessages(conversationId, () => accumulatedMessages);
           }
@@ -2167,12 +1697,10 @@ function ConversationWorkspace({
         if (event.type === "message.delta") {
           accumulatedMessages = accumulatedMessages.map((message) => {
             if (message.id !== event.messageId) return message;
-            return createMessage(
-              message.id,
-              "assistant",
-              `${getStoredMessageText(message)}${event.delta}`,
-              participantResponders.get(event.participantId)?.catalogApplicationId,
-            );
+            return {
+              ...message,
+              content: [{ type: "text" as const, text: `${getStoredMessageText(message)}${event.delta}` }],
+            };
           });
           updateConversationMessages(conversationId, () => accumulatedMessages);
           return;
@@ -2191,7 +1719,10 @@ function ConversationWorkspace({
         }
 
         if (event.type === "run.failed") {
-          removeEmptyRunMessages();
+          accumulatedMessages = accumulatedMessages.map((message) => (
+            runMessageIds.has(message.id) ? updateMessageProcessStatus(message, "failed") : message
+          ));
+          updateConversationMessages(conversationId, () => accumulatedMessages);
           setConversationTasks((current) => ({
             ...current,
             [conversationId]: {
@@ -2205,6 +1736,10 @@ function ConversationWorkspace({
         }
 
         if (event.type === "run.completed") {
+          accumulatedMessages = accumulatedMessages.map((message) => (
+            runMessageIds.has(message.id) ? updateMessageProcessStatus(message, "completed") : message
+          ));
+          updateConversationMessages(conversationId, () => accumulatedMessages);
           setConversationTasks((current) => {
             const task = current[conversationId] ?? { ...taskIdentity, participants: taskParticipants };
             return {
@@ -2225,7 +1760,10 @@ function ConversationWorkspace({
         }
 
         if (event.type === "run.cancelled") {
-          removeEmptyRunMessages();
+          accumulatedMessages = accumulatedMessages.map((message) => (
+            runMessageIds.has(message.id) ? updateMessageProcessStatus(message, "cancelled") : message
+          ));
+          updateConversationMessages(conversationId, () => accumulatedMessages);
           setConversationTasks((current) => {
             const next = { ...current };
             delete next[conversationId];
@@ -2252,16 +1790,6 @@ function ConversationWorkspace({
               avatar: participant.avatar,
               contextId: responders[index]?.applicationId,
               contextLabel: applicationMeta[responders[index]?.applicationId ?? "none"].label,
-              backendApplicationName: (() => {
-                const catalogApplication = applicationCatalog.find(
-                  (application) => application.id === responders[index]?.catalogApplicationId,
-                );
-                if (targetApplication?.id === catalogApplication?.id) {
-                  return targetApplication?.originalName ?? targetApplication?.name;
-                }
-                return catalogApplication?.originalName ?? catalogApplication?.name ?? participant.name;
-              })(),
-              backendApplicationId: responders[index]?.catalogApplicationId ?? undefined,
             })),
             target: {
               id: taskIdentity.targetId,
@@ -2272,7 +1800,10 @@ function ConversationWorkspace({
         );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
-          removeEmptyRunMessages();
+          accumulatedMessages = accumulatedMessages.map((message) => (
+            runMessageIds.has(message.id) ? updateMessageProcessStatus(message, "cancelled") : message
+          ));
+          updateConversationMessages(conversationId, () => accumulatedMessages);
           if (taskControllersRef.current.get(conversationId) === controller) {
             setConversationTasks((current) => {
               const next = { ...current };
@@ -2281,6 +1812,10 @@ function ConversationWorkspace({
             });
           }
         } else {
+          accumulatedMessages = accumulatedMessages.map((message) => (
+            runMessageIds.has(message.id) ? updateMessageProcessStatus(message, "failed") : message
+          ));
+          updateConversationMessages(conversationId, () => accumulatedMessages);
           setConversationTasks((current) => ({
             ...current,
             [conversationId]: {
@@ -2406,7 +1941,7 @@ function ConversationWorkspace({
       const fallbackApplication = pendingTargetApplication
         ?? pendingTargetProjectAdministrator
         ?? (isStandaloneConversation
-          ? activeStandaloneApplication
+          ? applicationCatalog.find((application) => application.id === activeCatalogApplicationId)
           : activeProjectAdministratorApplication);
       return mentionedApplications.length
         ? mentionedApplications.map((application) => ({
@@ -2428,7 +1963,6 @@ function ConversationWorkspace({
       activeConversation.applicationId,
       activeProjectAdministratorApplication,
       activeProjectCatalogApplications,
-      activeStandaloneApplication,
       isStandaloneConversation,
       pendingTargetApplication,
       pendingTargetProject,
@@ -2619,13 +2153,8 @@ function ConversationWorkspace({
     messages: activeConversation.messages,
     isRunning: activeTask?.status === "running",
     convertMessage: (item) => item,
-    setMessages: (items) => {
-      // Streaming events own the message list while a run is active. Ignoring
-      // external-store snapshots here prevents an older render from replacing
-      // newer deltas and making the response visibly jump backwards.
-      if (taskControllersRef.current.has(activeConversation.id)) return;
-      updateConversationMessages(activeConversation.id, () => [...items] as DemoMessage[]);
-    },
+    setMessages: (items) =>
+      updateConversationMessages(activeConversation.id, () => [...items] as DemoMessage[]),
     onNew: handleNewMessage,
     onEdit: handleEdit,
     onReload: handleReload,
@@ -2635,10 +2164,6 @@ function ConversationWorkspace({
   const switchConversation = (conversationId: string) => {
     const conversation = conversations.find((item) => item.id === conversationId);
     if (!conversation) return;
-    if (conversation.projectId === null) {
-      const navigationKey = getConversationNavigationKey(conversation);
-      setHiddenNavigationKeys((current) => current.filter((key) => key !== navigationKey));
-    }
     changeTaskOverlay(null);
     discardActiveEmptyConversation(conversationId);
     setSelectedFiles([]);
@@ -2723,7 +2248,7 @@ function ConversationWorkspace({
       administratorApplicationId,
     };
     discardActiveEmptyConversation();
-    updateUserProjects((current) => [...current, project]);
+    setProjectList((current) => [...current, project]);
     createProjectConversation(project.id, "", [], "project", null, project);
     antMessage.success("群组项目已创建");
   };
@@ -2736,13 +2261,7 @@ function ConversationWorkspace({
     catalogApplicationId: string | null = null,
     projectOverride?: Project,
   ) => {
-    const project = projectOverride
-      ?? activeProjectList.find((item) => item.id === projectId)
-      ?? activeProjectList[0];
-    if (!project) {
-      antMessage.warning("当前没有可用的群组项目，请先在用户端创建群组项目。");
-      return;
-    }
+    const project = projectOverride ?? projectList.find((item) => item.id === projectId) ?? projectList[0];
     const projectAgent =
       agents.find((item) => project.agentIds?.includes(item.id)) ??
       agents.find((item) =>
@@ -2794,7 +2313,6 @@ function ConversationWorkspace({
   const createStandaloneConversation = (
     applicationId: ApplicationId | null = null,
     catalogApplicationId: string | null = null,
-    applicationAlias: string | null = null,
   ) => {
     const conversation: Conversation = {
       id: `conversation-${Date.now()}`,
@@ -2802,7 +2320,6 @@ function ConversationWorkspace({
       agentId: agents[0].id,
       applicationId,
       catalogApplicationId,
-      applicationAlias,
       title: "新对话",
       updatedAt: "刚刚",
       messages: [],
@@ -2814,11 +2331,9 @@ function ConversationWorkspace({
     onMobileNavigationChange(false);
   };
 
-  const launchStandaloneApplication = (application: CatalogApplication, alias: string) => {
-    setHiddenNavigationKeys((current) => current.filter((key) => key !== `application:${application.id}`));
-    saveDigitalEmployeeAlias(application.id, alias);
-    createStandaloneConversation(application.contextId, application.id, alias);
-    antMessage.success(`${alias}已创建`);
+  const launchStandaloneApplication = (application: CatalogApplication) => {
+    createStandaloneConversation(application.contextId, application.id);
+    antMessage.success(`${application.name}已创建`);
   };
 
   const selectCatalogApplication = (catalogApplicationId: string) => {
@@ -2828,7 +2343,7 @@ function ConversationWorkspace({
 
     if (activeConversation.messages.length > 0) {
       if (isStandaloneConversation) {
-        createStandaloneConversation(application.contextId, application.id, application.name);
+        createStandaloneConversation(application.contextId, application.id);
       } else {
         createProjectConversation(
           activeProject.id,
@@ -2845,12 +2360,7 @@ function ConversationWorkspace({
     setConversations((current) =>
       current.map((conversation) =>
         conversation.id === activeConversation.id
-          ? {
-              ...conversation,
-              applicationId: application.contextId,
-              catalogApplicationId,
-              applicationAlias: application.name,
-            }
+          ? { ...conversation, applicationId: application.contextId, catalogApplicationId }
           : conversation,
       ),
     );
@@ -2869,7 +2379,7 @@ function ConversationWorkspace({
   };
 
   const selectConversationTargetProject = (projectId: string) => {
-    const project = activeProjectList.find((item) => item.id === projectId);
+    const project = projectList.find((item) => item.id === projectId);
     if (!project) return;
     setPendingConversationTarget({
       conversationId: activeConversation.id,
@@ -2883,52 +2393,10 @@ function ConversationWorkspace({
       (item) => item.id === catalogApplicationId,
     );
     if (!application) return;
-    launchStandaloneApplication(application, application.name);
+    launchStandaloneApplication(application);
   };
 
   const renameConversation = (conversation: Conversation) => {
-    const standaloneApplication = conversation.projectId === null
-      ? getConversationCatalogApplication(conversation)
-      : undefined;
-    const standaloneApplicationTemplate = conversation.projectId === null
-      ? getConversationCatalogTemplate(conversation)
-      : undefined;
-    if (standaloneApplication && standaloneApplicationTemplate) {
-      let nextName = standaloneApplication.name;
-      modal.confirm({
-        title: "重命名数字员工",
-        content: (
-          <Input
-            autoFocus
-            defaultValue={standaloneApplication.name}
-            maxLength={30}
-            showCount
-            aria-label="数字员工名称"
-            onChange={(event) => {
-              nextName = event.target.value.trim();
-            }}
-          />
-        ),
-        okText: "保存",
-        cancelText: "取消",
-        onOk: () => {
-          if (!nextName) {
-            antMessage.warning("请输入数字员工名称");
-            return Promise.reject();
-          }
-          saveDigitalEmployeeAlias(standaloneApplicationTemplate.id, nextName);
-          setConversations((current) => current.map((item) => (
-            item.projectId === null
-            && getConversationCatalogTemplate(item)?.id === standaloneApplicationTemplate.id
-              ? { ...item, applicationAlias: nextName }
-              : item
-          )));
-          antMessage.success("数字员工名称已更新");
-        },
-      });
-      return;
-    }
-
     let nextTitle = conversation.title;
     modal.confirm({
       title: "重命名对话",
@@ -2979,7 +2447,7 @@ function ConversationWorkspace({
           antMessage.warning("请输入群组项目名称");
           return Promise.reject();
         }
-        updateUserProjects((current) =>
+        setProjectList((current) =>
           current.map((item) => item.id === project.id ? { ...item, name: nextName } : item),
         );
         antMessage.success("群组项目名称已更新");
@@ -2994,13 +2462,7 @@ function ConversationWorkspace({
       okText: "归档",
       okButtonProps: { danger: true },
       cancelText: "取消",
-      onOk: () => {
-        updateUserProjects((current) => current.map((item) => (
-          item.id === project.id ? { ...item, archived: true } : item
-        )));
-        navigateTo("/archive");
-        antMessage.success("群组项目已归档");
-      },
+      onOk: () => antMessage.success("群组项目已归档"),
     });
   };
 
@@ -3031,7 +2493,7 @@ function ConversationWorkspace({
           antMessage.warning("请输入群组项目名称");
           return Promise.reject();
         }
-        updateUserProjects((current) => current.map((item) => (
+        setProjectList((current) => current.map((item) => (
           item.id === project.id
             ? { ...item, name: nextName }
             : item
@@ -3041,56 +2503,33 @@ function ConversationWorkspace({
     });
   };
 
-  const removeConversationFromList = (conversation: Conversation) => {
-    const navigationKey = getConversationNavigationKey(conversation);
-    setHiddenNavigationKeys((current) => current.includes(navigationKey)
-      ? current
-      : [...current, navigationKey]);
-    if (conversation.projectId === null) {
-      navigateTo("/apps");
-    } else if (conversation.id === activeConversationId) {
-      navigateTo(`/projects/${conversation.projectId}`);
-    }
-    const label = getConversationCatalogApplication(conversation)?.name ?? conversation.title;
-    antMessage.success(`已从对话列表中移除“${label}”，历史记录已保留`);
-  };
-
   const deleteConversation = (conversation: Conversation) => {
     modal.confirm({
-      title: `删除“${conversation.title}”？`,
-      content: "删除后，该条对话将不再显示，数字员工及其他对话不受影响。管理端运行与审计记录仍会保留。",
+      title: "删除对话记录？",
+      content: `将删除“${conversation.title}”及其本地演示消息，此操作不可撤销。`,
       okText: "删除",
       okButtonProps: { danger: true },
       cancelText: "取消",
       onOk: () => {
-        const deletedConversationIds = readDeletedConversationIds();
-        if (!deletedConversationIds.includes(conversation.id)) {
-          saveDeletedConversationIds([...deletedConversationIds, conversation.id]);
-        }
-        setConversations((current) => current.filter((item) => item.id !== conversation.id));
+        const standaloneFallback = standaloneConversations.find((item) => item.id !== conversation.id);
+        taskControllersRef.current.get(conversation.id)?.abort();
+        taskControllersRef.current.delete(conversation.id);
         setConversationTasks((current) => {
-          if (!(conversation.id in current)) return current;
           const next = { ...current };
           delete next[conversation.id];
           return next;
         });
-        if (conversation.id === activeConversationId) {
-          const nextConversation = conversations.find((item) => (
-            item.id !== conversation.id
-            && (conversation.projectId === null
-              ? item.projectId === null
-                && getConversationNavigationKey(item) === getConversationNavigationKey(conversation)
-              : item.projectId === conversation.projectId)
-          ));
-          if (nextConversation) {
-            navigateTo(nextConversation.projectId === null
-              ? `/conversations/${nextConversation.id}`
-              : `/projects/${nextConversation.projectId}/conversations/${nextConversation.id}`);
-          } else {
-            navigateTo(conversation.projectId === null ? "/apps" : `/projects/${conversation.projectId}`);
+        setConversations((current) => {
+          const remaining = current.filter((item) => item.id !== conversation.id);
+          if (conversation.id === activeConversationId) {
+            navigateTo(
+              conversation.projectId === null && standaloneFallback
+                ? `/conversations/${standaloneFallback.id}`
+                : `/projects/${conversation.projectId ?? projectList[0].id}`,
+            );
           }
-        }
-        antMessage.success("对话已删除");
+          return remaining;
+        });
       },
     });
   };
@@ -3111,13 +2550,12 @@ function ConversationWorkspace({
       isStandaloneConversation={isStandaloneConversation}
       projectNavigationActive={route.page === "project" || route.page === "conversation"}
       conversations={conversations}
-      hiddenNavigationKeys={hiddenNavigationKeys}
       conversationTasks={taskList}
       viewedTaskVersions={viewedTaskVersions}
-      projects={activeProjectList}
+      projects={projectList}
       onCreateProject={createProject}
       onCreateStandaloneConversation={createStandaloneConversation}
-      onDelete={removeConversationFromList}
+      onDelete={deleteConversation}
       onDarkModeChange={onDarkModeChange}
       onApplicationsOpen={openApplications}
       onArchiveOpen={openArchive}
@@ -3170,7 +2608,7 @@ function ConversationWorkspace({
               {route.page === "overview" ? (
                 <OverviewHome
                   conversations={conversations}
-                  projects={activeProjectList}
+                  projects={projectList}
                   tasks={taskList}
                   onOpenConversation={switchConversation}
                 />
@@ -3185,14 +2623,14 @@ function ConversationWorkspace({
                   )}
                 />
               ) : route.page === "archive" ? (
-                <ArchiveHome projects={archivedProjectList} onProjectOpen={openArchivedProject} />
+                <ArchiveHome projects={projectList} onProjectOpen={openArchivedProject} />
               ) : route.page === "applications" ? (
                   <ApplicationsHome
                     conversations={conversations}
                     onLaunch={launchStandaloneApplication}
                     onOpenConversation={switchConversation}
                     onInstallSkill={installSkill}
-                    projects={activeProjectList}
+                    projects={projectList}
                     skillInstallations={skillInstallations}
                   />
               ) : route.page === "project" && projectHomeVisible ? (
@@ -3244,10 +2682,6 @@ function ConversationWorkspace({
                         return;
                       }
                       const application = activeProjectCatalogApplications[0] ?? applicationCatalog[0];
-                      if (!application) {
-                        antMessage.warning("当前没有可用的数字员工，请先在管理端创建并授权数字员工。");
-                        return;
-                      }
                       createProjectConversation(
                         activeProject.id,
                         task.title,
@@ -3266,10 +2700,6 @@ function ConversationWorkspace({
                       const application = activeProjectCatalogApplications.find((item) => item.id === catalogApplicationId)
                         ?? activeProjectCatalogApplications[0]
                         ?? applicationCatalog[0];
-                      if (!application) {
-                        antMessage.warning("当前没有可用的数字员工，请先在管理端创建并授权数字员工。");
-                        return;
-                      }
                       createProjectConversation(
                         activeProject.id,
                         prompt,
@@ -3279,7 +2709,7 @@ function ConversationWorkspace({
                       );
                     }}
                     onProjectApplicationsChange={(applicationIds) => {
-                      updateUserProjects((current) => current.map((project) => (
+                      setProjectList((current) => current.map((project) => (
                         project.id === activeProject.id
                           ? { ...project, applicationIds }
                           : project
@@ -3322,7 +2752,6 @@ function ConversationWorkspace({
                       onCreate={() => createStandaloneConversation(
                         activeStandaloneApplication.contextId,
                         activeStandaloneApplication.id,
-                        activeConversation.applicationAlias ?? activeStandaloneApplication.name,
                       )}
                       onDelete={deleteConversation}
                       onRename={renameConversation}
@@ -3474,6 +2903,23 @@ function ConversationWorkspace({
                       </AnimatePresence>
                     </div>
 
+                  {activeRuntimeError ? (
+                    <div className="runtime-alert" role="alert">
+                      <span className="font-strong">本轮运行需要处理</span>
+                      <span>{activeRuntimeError}</span>
+                      <Button
+                        size="small"
+                        type="text"
+                        icon={<X size={14} />}
+                        onClick={() => setConversationTasks((current) => {
+                          const next = { ...current };
+                          delete next[activeConversationId];
+                          return next;
+                        })}
+                      />
+                    </div>
+                  ) : null}
+
                     <ThreadView
                       key={activeConversationId}
                       conversationId={activeConversationId}
@@ -3491,16 +2937,9 @@ function ConversationWorkspace({
                       project={pendingTargetProject ?? (isStandaloneConversation ? null : activeProject)}
                       projectApplications={pendingTargetProject
                         ? pendingTargetProjectApplications
-                        : isStandaloneConversation && activeStandaloneApplication
-                          ? selectableCatalogApplications.map((application) => (
-                              application.id === activeStandaloneApplication.id
-                                ? activeStandaloneApplication
-                                : application
-                            ))
-                          : selectableCatalogApplications}
-                      runtimeError={activeRuntimeError}
+                        : selectableCatalogApplications}
                       availableApplications={getCreatedDigitalEmployees(conversations)}
-                      availableProjects={activeProjectList}
+                      availableProjects={projectList}
                       enableApplicationMentions={Boolean(pendingTargetProject) || !isStandaloneConversation}
                       resourceFiles={pendingTargetProject
                         ? generatedFiles.filter((file) => file.projectId === pendingTargetProject.id)
@@ -3521,11 +2960,6 @@ function ConversationWorkspace({
                       onTargetProjectSelect={selectConversationTargetProject}
                       onBrowseApplication={openConversationTargetApplication}
                       onBrowseProject={openProject}
-                      onRuntimeErrorDismiss={() => setConversationTasks((current) => {
-                        const next = { ...current };
-                        delete next[activeConversationId];
-                        return next;
-                      })}
                       onStop={() => cancelApplicationRun(activeConversationId)}
                       uploadProps={{ beforeUpload, multiple: true, showUploadList: false }}
                     />
@@ -3554,13 +2988,12 @@ function ConversationWorkspace({
                     onInstallSkill={installSkill}
                     onProjectNameChange={!isStandaloneConversation
                       ? (projectId, name) => {
-                          updateUserProjects((current) => current.map((project) => (
+                          setProjectList((current) => current.map((project) => (
                             project.id === projectId ? { ...project, name } : project
                           )));
                           antMessage.success("名称修改成功");
                         }
                       : undefined}
-                    onArchiveProject={!isStandaloneConversation ? archiveProject : undefined}
                     onActiveToolChange={setProjectWorkspaceTool}
                     onOpenConversation={(conversationId) => {
                       setProjectWorkspaceTool(null);
@@ -3569,7 +3002,7 @@ function ConversationWorkspace({
                     onFillComposerPrompt={(prompt) => composerPromptRef.current?.(prompt)}
                     onProjectApplicationsChange={!isStandaloneConversation
                       ? (applicationIds) => {
-                          updateUserProjects((current) => current.map((project) => (
+                          setProjectList((current) => current.map((project) => (
                             project.id === activeProject.id
                               ? { ...project, applicationIds }
                               : project
@@ -4110,12 +3543,10 @@ function ApplicationHoverCard({
         alt=""
         aria-hidden="true"
       />
+      <Badge className="application-hover-card-status" status="success" text="在线" />
       <div className="application-hover-card-identity">
         <img src={application.avatar} alt="" aria-hidden="true" />
-        <div className="application-hover-card-name-stack">
-          <strong>{application.name}</strong>
-          {application.originalName ? <span>{application.originalName}</span> : null}
-        </div>
+        <strong>{application.name}</strong>
       </div>
       <div className="application-hover-card-details">
         <p className="application-hover-card-description">{application.description}</p>
@@ -4147,14 +3578,10 @@ function ApplicationProfileSummary({
         <span title={application.id}>ID: {application.id}</span>
       </div>
       <div className="application-profile-identity">
-        <div className="application-profile-name-row">
-          <h3>{application.name}</h3>
-          {application.originalName ? (
-            <span className="application-profile-original-name">{application.originalName}</span>
-          ) : null}
-        </div>
+        <h3>{application.name}</h3>
         {showMeta ? (
           <div className="application-profile-meta">
+            <span className="application-profile-online"><i aria-hidden="true" />在线</span>
             <span>启用时间：2026年9月24日</span>
           </div>
         ) : null}
@@ -4309,7 +3736,7 @@ function ConversationHistoryPanel({
               <Dropdown
                 trigger={["click"]}
                 menu={{
-                  items: conversationHistoryMenuItems,
+                  items: conversationMoreMenuItems,
                   onClick: ({ key }) => {
                     if (key === "rename") onRename(conversation);
                     if (key === "delete") onDelete(conversation);
@@ -4678,7 +4105,6 @@ function ProjectWorkspaceRail({
   skillInstallations,
   runStageSelection,
   onProjectNameChange,
-  onArchiveProject,
   onActiveToolChange,
   onInstallSkill,
   onOpenConversation,
@@ -4697,7 +4123,6 @@ function ProjectWorkspaceRail({
   skillInstallations: SkillInstallation[];
   runStageSelection?: RunStageSelection | null;
   onProjectNameChange?: (projectId: string, name: string) => void;
-  onArchiveProject?: (project: Project) => void;
   onActiveToolChange: (tool: ProjectWorkspaceTool | null) => void;
   onInstallSkill: (
     skill: SkillDefinition,
@@ -4911,22 +4336,19 @@ function ProjectWorkspaceRail({
                     value={activeSkillCategory}
                     onChange={setActiveSkillCategory}
                   />
-                  <Tooltip title="仅显示已安装的 Skill">
-                    <button
-                      className={`applications-installed-filter${showInstalledSkills ? " is-active" : ""}`}
-                      type="button"
-                      aria-pressed={showInstalledSkills}
-                      onClick={() => setShowInstalledSkills((current) => !current)}
-                    >
-                      <Check size={14} aria-hidden="true" />
-                      已安装
-                    </button>
-                  </Tooltip>
+                  <button
+                    className={`applications-category-pill${showInstalledSkills ? " is-active" : ""}`}
+                    type="button"
+                    aria-pressed={showInstalledSkills}
+                    onClick={() => setShowInstalledSkills((current) => !current)}
+                  >
+                    我安装的
+                  </button>
                 </div>
               </div>
               <SkillCardCollection
                 className="is-workspace-panel"
-                emptyDescription={showInstalledSkills ? "没有匹配的已安装 Skill" : "没有匹配的 Skill"}
+                emptyDescription="没有匹配的 Skill"
                 skills={visibleSkills}
                 onOpenSkill={setSelectedSkill}
                 renderAction={(skill) => {
@@ -5027,10 +4449,10 @@ function ProjectWorkspaceRail({
                 <section className="application-profile-section">
                   <div className="application-profile-section-heading">
                     <h4>核心能力</h4>
-                    <span>{getApplicationSkillTags(profileApplication).length} 项</span>
+                    <span>{applicationSkillTags[profileApplication.id].length} 项</span>
                   </div>
                   <div className="application-profile-capabilities">
-                    {getApplicationSkillTags(profileApplication).map((capability) => (
+                    {applicationSkillTags[profileApplication.id].map((capability) => (
                       <div key={capability}>
                         <span className="application-profile-check" aria-hidden="true"><Check size={13} /></span>
                         <span>{capability}</span>
@@ -5042,6 +4464,7 @@ function ProjectWorkspaceRail({
                 <section className="application-profile-section">
                   <div className="application-profile-section-heading">
                     <h4>Skill技能</h4>
+                    <span>{profileSkills.length} 项已安装</span>
                   </div>
                   {profileSkills.length ? (
                     <div className="application-profile-skills">
@@ -5167,49 +4590,27 @@ function ProjectWorkspaceRail({
               </div>
               <div className="project-settings-people" aria-label="数字员工列表">
                 {applications.map((application) => (
-                  <Popover
-                    content={(
-                      <ApplicationHoverCard
-                        application={application}
-                        skillInstallations={skillInstallations}
-                      />
-                    )}
-                    key={application.id}
-                    mouseEnterDelay={0.15}
-                    placement="left"
-                    rootClassName="application-hover-popover project-settings-application-profile-popover"
-                    trigger={["hover", "focus"]}
-                  >
-                    <div
-                      className="project-settings-person is-profile-trigger"
-                      aria-label={`${application.name}，查看数字员工资料`}
-                      tabIndex={0}
-                    >
+                  <div className="project-settings-person" key={application.id}>
+                    <Tooltip title={application.name}>
                       <span className="project-settings-avatar-trigger">
                         <Avatar className="application-avatar-surface" size={24} src={application.avatar} />
                       </span>
-                      <span className="project-settings-person-name" title={application.name}>{application.name}</span>
-                    </div>
-                  </Popover>
+                    </Tooltip>
+                    <span className="project-settings-person-name" title={application.name}>{application.name}</span>
+                  </div>
                 ))}
               </div>
             </div>
 
             <Divider />
 
-            <div className="project-settings-archive">
+            <div className="project-settings-danger">
               <div>
-                <strong>归档群组项目</strong>
-                <span>归档后将移至归档，群组项目及历史对话仍可恢复</span>
+                <strong>删除群组项目</strong>
+                <span>删除后不可找回，群组项目成员也将无法继续访问</span>
               </div>
-              <Tooltip title="归档群组项目">
-                <Button
-                  icon={<Archive size={16} />}
-                  aria-label="归档群组项目"
-                  onClick={() => {
-                    if (project) onArchiveProject?.(project);
-                  }}
-                />
+              <Tooltip title="删除群组项目（演示）">
+                <Button danger icon={<Trash2 size={16} />} aria-label="删除群组项目（演示）" />
               </Tooltip>
             </div>
             </>
@@ -5598,18 +4999,6 @@ function TeamResourcesPanel({
   const [selectedResource, setSelectedResource] = useState<TeamResource | null>(null);
   const [renameResource, setRenameResource] = useState<TeamResource | null>(null);
   const [renameResourceName, setRenameResourceName] = useState("");
-  useEffect(() => {
-    setResourceGroups(groups);
-    setExpandedGroupIds(new Set(groups.map(group => group.id)));
-    setSelectedResource(null);
-  }, [groups, groups.length]);
-  const openResource = (resource: TeamResource) => {
-    if (resource.knowledgeBaseId) {
-      window.open(new URL(`/resources/knowledge/config/${encodeURIComponent(resource.knowledgeBaseId)}`, applicationStudioUrl).toString(), "_blank", "noopener,noreferrer");
-      return;
-    }
-    setSelectedResource(resource);
-  };
 
   const createResourceFile = (resource: TeamResource) => {
     const explorerFile = createTeamResourceExplorerFile(resource);
@@ -5700,8 +5089,7 @@ function TeamResourcesPanel({
             </div>
           </section>
         ) : (
-        <div className={`team-resource-groups${resourceGroups.some(group => group.resources.length) ? "" : " is-empty"}`} aria-label="文件分类">
-          {!resourceGroups.some(group => group.resources.length) ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无团队资源文件" /> : null}
+        <div className="team-resource-groups" aria-label="文件分类">
           {resourceGroups.map((group) => {
             const expanded = expandedGroupIds.has(group.id);
             return (
@@ -5720,9 +5108,7 @@ function TeamResourcesPanel({
                       const extension = resource.name.split(".").pop()?.toLocaleLowerCase() ?? "";
                       const referenceResource = () => onReferenceFile?.(createResourceFile(resource));
                       const explorerFile = createTeamResourceExplorerFile(resource);
-                      const menuItems: MenuProps["items"] = resource.knowledgeBaseId ? [
-                        { key: "open", label: "查看团队资源", onClick: () => openResource(resource) },
-                      ] : [
+                      const menuItems: MenuProps["items"] = [
                         { key: "open", label: "打开文件", onClick: () => setSelectedResource(resource) },
                         onReferenceFile ? { key: "reference", icon: <Paperclip size={14} />, label: "引用该资源", onClick: referenceResource } : null,
                         {
@@ -5746,7 +5132,7 @@ function TeamResourcesPanel({
                           <button
                             className="work-file-main team-resource-static-file"
                             type="button"
-                            onClick={() => openResource(resource)}
+                            onClick={() => setSelectedResource(resource)}
                           >
                             <span className="work-file-type">
                               <FileTypeIcon type={FILE_TYPE_ICON_BY_EXTENSION[extension] ?? "other"} />
@@ -5756,13 +5142,13 @@ function TeamResourcesPanel({
                           <div className="work-file-tail">
                             <small className="work-file-time">{resource.updatedAt}</small>
                             <div className="work-file-actions">
-                              <Tooltip title={resource.knowledgeBaseId ? "查看团队资源" : "下载"}>
+                              <Tooltip title="下载">
                                 <Button
                                   type="text"
                                   size="small"
                                   icon={<Download size={15} />}
-                                  aria-label={`${resource.knowledgeBaseId ? "查看" : "下载"}${resource.name}`}
-                                  onClick={() => resource.knowledgeBaseId ? openResource(resource) : downloadExplorerFile(explorerFile)}
+                                  aria-label={`下载${resource.name}`}
+                                  onClick={() => downloadExplorerFile(explorerFile)}
                                 />
                               </Tooltip>
                               <Dropdown trigger={["click"]} menu={{ items: menuItems }}>
@@ -6111,10 +5497,7 @@ function SkillDetailModal({
 }) {
   if (!skill) return null;
   const SkillIcon = skillIconCatalog[skill.icon];
-  const detail = skillDetailCatalog[skill.id] ?? {
-    capabilities: skill.capabilities ?? skillCapabilityFallbacks[skill.category],
-    usage: skill.usage ?? `适用于需要${skill.name}能力的对话和工作任务。`,
-  };
+  const detail = skillDetailCatalog[skill.id];
 
   return (
     <Modal
@@ -6169,20 +5552,16 @@ function SkillDetailModal({
 
 function DigitalEmployeeDetailModal({
   application,
-  conversation,
   onClose,
   onCreate,
-  onOpenConversation,
 }: {
   application: CatalogApplication | null;
-  conversation?: Conversation;
   onClose: () => void;
   onCreate: (application: CatalogApplication) => void;
-  onOpenConversation: (conversationId: string) => void;
 }) {
   const reduceMotion = useReducedMotion();
   if (!application) return null;
-  const capabilities = getApplicationSkillTags(application);
+  const capabilities = applicationSkillTags[application.id];
   const detailTransition = reduceMotion
     ? { duration: 0 }
     : { type: "spring" as const, stiffness: 320, damping: 32, bounce: 0 };
@@ -6200,17 +5579,12 @@ function DigitalEmployeeDetailModal({
           <Button
             type="primary"
             block
-            disabled={!conversation && application.available === false}
             onClick={() => {
               onClose();
-              if (conversation) {
-                onOpenConversation(conversation.id);
-                return;
-              }
               onCreate(application);
             }}
           >
-            {conversation ? "发起对话" : application.available === false ? "尚未启用" : "创建"}
+            创建
           </Button>
         </div>
       )}
@@ -6263,29 +5637,10 @@ function CreateDigitalEmployeeModal({
 }: {
   application: CatalogApplication | null;
   onCancel: () => void;
-  onCreate: (application: CatalogApplication, alias: string) => void;
+  onCreate: (application: CatalogApplication) => void;
 }) {
   const aliasInputRef = useRef<InputRef>(null);
-  const [alias, setAlias] = useState("");
-  const [aliasError, setAliasError] = useState("");
-
-  useEffect(() => {
-    setAlias("");
-    setAliasError("");
-  }, [application?.id]);
-
   if (!application) return null;
-
-  const createDigitalEmployee = () => {
-    const normalizedAlias = alias.trim();
-    if (!normalizedAlias) {
-      setAliasError("请输入数字员工名称");
-      aliasInputRef.current?.focus();
-      return;
-    }
-    onCancel();
-    onCreate(application, normalizedAlias);
-  };
 
   return (
     <Modal
@@ -6333,7 +5688,7 @@ function CreateDigitalEmployeeModal({
         <div className="create-digital-employee-capabilities">
           <span>我擅长：</span>
           <div>
-            {getApplicationSkillTags(application).map((capability, index) => (
+            {applicationSkillTags[application.id].map((capability, index) => (
               <span key={capability}>
                 {index > 0 ? <i aria-hidden="true">·</i> : null}
                 {capability}
@@ -6342,39 +5697,25 @@ function CreateDigitalEmployeeModal({
           </div>
         </div>
 
-        <div className="create-digital-employee-alias-field">
-          <label className={`create-digital-employee-alias${aliasError ? " is-error" : ""}`}>
-            <span>名称<span className="create-digital-employee-required" aria-hidden="true">*</span>：</span>
-            <Input
-              variant="borderless"
-              aria-label="数字员工名称"
-              aria-invalid={Boolean(aliasError)}
-              aria-describedby={aliasError ? "create-digital-employee-alias-error" : undefined}
-              placeholder="请输入数字员工名称"
-              autoFocus
-              maxLength={30}
-              ref={aliasInputRef}
-              required
-              value={alias}
-              onChange={(event) => {
-                setAlias(event.target.value);
-                if (aliasError) setAliasError("");
-              }}
-              onPressEnter={createDigitalEmployee}
-            />
-          </label>
-          {aliasError ? (
-            <span className="create-digital-employee-alias-error" id="create-digital-employee-alias-error" role="alert">
-              {aliasError}
-            </span>
-          ) : null}
-        </div>
+        <label className="create-digital-employee-alias">
+          <span>称呼：</span>
+          <Input
+            variant="borderless"
+            aria-label="数字员工称呼"
+            placeholder="请输入称呼"
+            autoFocus
+            ref={aliasInputRef}
+          />
+        </label>
 
         <Button
           className="create-digital-employee-submit"
           type="primary"
           block
-          onClick={createDigitalEmployee}
+          onClick={() => {
+            onCancel();
+            onCreate(application);
+          }}
         >
           创建数字员工
         </Button>
@@ -6454,11 +5795,7 @@ function ArchiveHome({
         <Typography.Title id="archive-page-title" level={2}>归档</Typography.Title>
       </header>
       <section className="archive-projects" aria-label="已归档的群组项目">
-        {archivedProjects.length === 0 ? (
-          <div className="archive-project-empty">
-            <Empty description="暂无已归档的群组项目" />
-          </div>
-        ) : <div className="archive-project-list">
+        <div className="archive-project-list">
           {archivedProjects.map((project) => {
             const applicationNames = getProjectCatalogApplications(project)
               .map((application) => application.name);
@@ -6477,12 +5814,12 @@ function ArchiveHome({
                   drift={0.5}
                   onFolderClick={() => onProjectOpen(project.id)}
                   onSelect={(value, index) => console.log(value, index)}
-                  folderColor="#c7c7cc"
-                  frontColor="#e5e5e7"
-                  paperColor="#f7f7f8"
-                  itemColor="#f7f7f8"
-                  itemTextColor="#27272a"
-                  labelColor="#27272a"
+                  folderColor="#3f3f46"
+                  frontColor="#52525b"
+                  paperColor="#f5f5f5"
+                  itemColor="#f5f5f5"
+                  itemTextColor="#18181b"
+                  labelColor="#f5f5f5"
                   width={200}
                   height={148}
                   radius={14}
@@ -6499,7 +5836,7 @@ function ArchiveHome({
               </article>
             );
           })}
-        </div>}
+        </div>
       </section>
     </section>
   );
@@ -6717,7 +6054,21 @@ function OverviewHome({
         </div>
       </header>
 
-      <section className="overview-summary" aria-label="工作记录">
+      <section className="overview-summary" aria-labelledby="overview-summary-title">
+        <header>
+          <span id="overview-summary-title" className="font-strong">工作记录</span>
+          <Select
+            className="overview-period-select"
+            value={period}
+            aria-label="统计数据周期"
+            options={[
+              { label: "最近 7 天", value: "week" },
+              { label: "最近一个月", value: "month" },
+              { label: "全部时间", value: "all" },
+            ]}
+            onChange={setPeriod}
+          />
+        </header>
         <div className="overview-metrics">
           {[
             { filter: "all" as const, label: "任务总数", value: periodRows.length, icon: <MessagesSquare size={20} />, note: "数字员工的全部工作记录" },
@@ -6901,7 +6252,7 @@ function ApplicationsHome({
   skillInstallations,
 }: {
   conversations: Conversation[];
-  onLaunch: (application: CatalogApplication, alias: string) => void;
+  onLaunch: (application: CatalogApplication) => void;
   onOpenConversation: (conversationId: string) => void;
   onInstallSkill: (
     skill: SkillDefinition,
@@ -6916,11 +6267,21 @@ function ApplicationsHome({
   const [activeCategory, setActiveCategory] = useState<ApplicationCategory>("全部");
   const [activeSkillCategory, setActiveSkillCategory] = useState<SkillCategory>("全部");
   const [applicationSearch, setApplicationSearch] = useState("");
-  const [showInstalledApplications, setShowInstalledApplications] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<SkillDefinition | null>(null);
   const [selectedApplication, setSelectedApplication] = useState<CatalogApplication | null>(null);
   const [creatingApplication, setCreatingApplication] = useState<CatalogApplication | null>(null);
   const normalizedApplicationSearch = applicationSearch.trim().toLocaleLowerCase();
+  const visibleApplications = applicationCatalog.filter(
+    (application) => {
+      const matchesCategory = activeCategory === "全部" || application.category === activeCategory;
+      const matchesSearch = !normalizedApplicationSearch
+        || `${application.name} ${application.category} ${application.description}`.toLocaleLowerCase().includes(normalizedApplicationSearch);
+      return matchesCategory && matchesSearch;
+    },
+  );
+  const createdDigitalEmployees = useMemo(() => {
+    return getCreatedDigitalEmployees(conversations);
+  }, [conversations]);
   const createdConversationByApplicationId = useMemo(() => {
     const result = new Map<string, Conversation>();
     conversations.forEach((conversation) => {
@@ -6931,18 +6292,6 @@ function ApplicationsHome({
       }
     });
     return result;
-  }, [conversations]);
-  const visibleApplications = applicationCatalog.filter(
-    (application) => {
-      const matchesCategory = activeCategory === "全部" || application.category === activeCategory;
-      const matchesSearch = !normalizedApplicationSearch
-        || `${application.name} ${application.category} ${application.description}`.toLocaleLowerCase().includes(normalizedApplicationSearch);
-      const matchesInstalled = !showInstalledApplications || createdConversationByApplicationId.has(application.id);
-      return matchesCategory && matchesSearch && matchesInstalled;
-    },
-  );
-  const createdDigitalEmployees = useMemo(() => {
-    return getCreatedDigitalEmployees(conversations);
   }, [conversations]);
   const visibleSkills = skillCatalog.filter((skill) => {
     const matchesCategory = activeSkillCategory === "全部" || skill.category === activeSkillCategory;
@@ -6978,7 +6327,7 @@ function ApplicationsHome({
               ),
             };
           })
-        : [{ key: "digital-employee-empty", disabled: true, label: <span className="skill-install-empty">暂无已创建的数字员工</span> }],
+        : [{ key: "digital-employee-empty", disabled: true, label: "暂无已创建的数字员工" }],
     },
     {
       type: "group",
@@ -7000,7 +6349,7 @@ function ApplicationsHome({
               ),
             };
           })
-        : [{ key: "project-empty", disabled: true, label: <span className="skill-install-empty">暂无群组项目</span> }],
+        : [{ key: "project-empty", disabled: true, label: "暂无群组项目" }],
     },
   ];
 
@@ -7062,17 +6411,7 @@ function ApplicationsHome({
                   <Button size="small" disabled>导入 Skill</Button>
                 </div>
               ) : (
-                <Tooltip title="仅显示已创建的数字员工">
-                  <button
-                    className={`applications-installed-filter${showInstalledApplications ? " is-active" : ""}`}
-                    type="button"
-                    aria-pressed={showInstalledApplications}
-                    onClick={() => setShowInstalledApplications((current) => !current)}
-                  >
-                    <Check size={14} aria-hidden="true" />
-                    已创建
-                  </button>
-                </Tooltip>
+                <Text className="applications-count">{visibleApplications.length} 个数字员工</Text>
               )}
               </div>
             </div>
@@ -7095,7 +6434,7 @@ function ApplicationsHome({
                       <span className="application-card-details">
                         <span className="application-card-description">{application.description}</span>
                         <span className="application-card-tags" aria-label={`${application.name}能力`}>
-                          {getApplicationSkillTags(application).map((skill) => (
+                          {applicationSkillTags[application.id].map((skill) => (
                             <span className="application-card-tag" key={skill}>{skill}</span>
                           ))}
                         </span>
@@ -7109,24 +6448,19 @@ function ApplicationsHome({
                       >
                         查看详情
                       </button>
-                      <Tooltip title={application.available === false ? "管理端已发布，但尚未启用运行入口" : undefined}>
-                        <span>
-                          <button
-                            className="application-card-action-primary"
-                            type="button"
-                            disabled={!createdConversation && application.available === false}
-                            onClick={() => {
-                              if (createdConversation) {
-                                onOpenConversation(createdConversation.id);
-                                return;
-                              }
-                              setCreatingApplication(application);
-                            }}
-                          >
-                            {createdConversation ? "发起对话" : application.available === false ? "尚未启用" : "创建"}
-                          </button>
-                        </span>
-                      </Tooltip>
+                      <button
+                        className="application-card-action-primary"
+                        type="button"
+                        onClick={() => {
+                          if (createdConversation) {
+                            onOpenConversation(createdConversation.id);
+                            return;
+                          }
+                          setCreatingApplication(application);
+                        }}
+                      >
+                        {createdConversation ? "发起对话" : "创建"}
+                      </button>
                     </span>
                   </article>
                   );
@@ -7134,11 +6468,7 @@ function ApplicationsHome({
               </div>
             ) : null}
             {activeProductTab === "digital-employees" && !visibleApplications.length ? (
-              <Empty
-                className="applications-empty"
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={showInstalledApplications ? "没有匹配的已创建数字员工" : "没有匹配的数字员工"}
-              />
+              <Empty className="applications-empty" image={Empty.PRESENTED_IMAGE_SIMPLE} description="没有匹配的数字员工" />
             ) : null}
             {activeProductTab === "skills" ? (
               <SkillCardCollection
@@ -7209,12 +6539,8 @@ function ApplicationsHome({
       />
       <DigitalEmployeeDetailModal
         application={selectedApplication}
-        conversation={selectedApplication
-          ? createdConversationByApplicationId.get(selectedApplication.id)
-          : undefined}
         onClose={() => setSelectedApplication(null)}
         onCreate={setCreatingApplication}
-        onOpenConversation={onOpenConversation}
       />
       <CreateDigitalEmployeeModal
         application={creatingApplication}
@@ -7275,7 +6601,7 @@ const MAX_LOCAL_UPLOAD_SIZE = 2 * 1024 * 1024;
 
 function readLocalCollection<T>(key: string): T[] {
   try {
-    const value = scopedStorage.getItem(key);
+    const value = window.localStorage.getItem(key);
     return value ? (JSON.parse(value) as T[]) : [];
   } catch {
     return [];
@@ -7283,7 +6609,7 @@ function readLocalCollection<T>(key: string): T[] {
 }
 
 function saveLocalCollection<T>(key: string, value: T[]) {
-  scopedStorage.setItem(key, JSON.stringify(value));
+  window.localStorage.setItem(key, JSON.stringify(value));
 }
 
 function formatBytes(bytes: number) {
@@ -8219,7 +7545,6 @@ function ScheduledTaskModal({
             <Form.Item name="frequency" noStyle>
               <Select
                 aria-label="执行频率"
-                suffixIcon={<ChevronDown size={14} />}
                 options={[
                   { label: "不重复", value: "once" },
                   { label: "每天", value: "daily" },
@@ -8242,11 +7567,7 @@ function ScheduledTaskModal({
               </Form.Item>
             ) : selectedFrequency === "weekly" || selectedFrequency === "monthly" ? (
               <Form.Item name="frequencyDetail" noStyle>
-                <Select
-                  aria-label="执行日期"
-                  suffixIcon={<ChevronDown size={14} />}
-                  options={detailOptions}
-                />
+                <Select aria-label="执行日期" options={detailOptions} />
               </Form.Item>
             ) : null}
             <Form.Item name="time" noStyle>
@@ -8306,7 +7627,7 @@ function ProjectHome({
   const [managedApplicationCategory, setManagedApplicationCategory] = useState<ApplicationCategory>("全部");
   const projectCatalogApplications = getProjectCatalogApplications(project);
   const [starterCatalogApplicationId, setStarterCatalogApplicationId] = useState(
-    () => projectCatalogApplications[0]?.id ?? applicationCatalog[0]?.id ?? "",
+    () => projectCatalogApplications[0]?.id ?? applicationCatalog[0].id,
   );
   const activities = projectActivities.filter((activity) => activity.projectId === project.id);
   const tasks = projectTasks.filter((task) => task.projectId === project.id);
@@ -8353,10 +7674,6 @@ function ProjectHome({
     const selectedApplication = projectCatalogApplications.find(
       (application) => application.id === starterCatalogApplicationId,
     ) ?? projectCatalogApplications[0] ?? applicationCatalog[0];
-    if (!selectedApplication) {
-      antMessage.warning("当前没有可用的数字员工，请先在管理端创建并授权数字员工。");
-      return;
-    }
     onStartConversation(prompt, selectedApplication.id);
     setStarterPrompt("");
   };
@@ -8423,7 +7740,7 @@ function ProjectHome({
                       open={openConversationMenuId === conversation.id}
                       onOpenChange={(open) => setOpenConversationMenuId(open ? conversation.id : null)}
                       menu={{
-                        items: conversationHistoryMenuItems,
+                        items: conversationMoreMenuItems,
                         onClick: ({ key }) => {
                           if (key === "rename") onRenameConversation(conversation);
                           if (key === "delete") onDeleteConversation(conversation);
@@ -8808,7 +8125,6 @@ type ConversationNavigationProps = {
   isStandaloneConversation: boolean;
   projectNavigationActive: boolean;
   conversations: Conversation[];
-  hiddenNavigationKeys: string[];
   conversationTasks: ConversationTaskState[];
   viewedTaskVersions: Record<string, number>;
   projects: Project[];
@@ -8885,7 +8201,6 @@ function ConversationNavigation({
   isStandaloneConversation,
   projectNavigationActive,
   conversations,
-  hiddenNavigationKeys,
   conversationTasks,
   viewedTaskVersions,
   projects,
@@ -8910,12 +8225,7 @@ function ConversationNavigation({
   const [searchQuery, setSearchQuery] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [accountSettingsOpen, setAccountSettingsOpen] = useState(false);
-  const [accountSettingsPrimed, setAccountSettingsPrimed] = useState(false);
-  useEffect(() => { if (settingsOpen) setAccountSettingsPrimed(true); }, [settingsOpen]);
-  const closeAccountSettings = useCallback(() => setAccountSettingsOpen(false), []);
-  const teamOptions = getUserTeams();
-  const activeTeamId = getActiveTeam()?.id ?? "";
+  const [activeTeamId, setActiveTeamId] = useState(teamOptions[0].id);
   const [navigationMode, setNavigationMode] = useState<"daily" | "app-builder">("daily");
   const [collapsedHistoryOpen, setCollapsedHistoryOpen] = useState(false);
   const [hoveredNavigationKey, setHoveredNavigationKey] = useState<string | null>(null);
@@ -8928,7 +8238,7 @@ function ConversationNavigation({
   const [newProjectApplicationSearch, setNewProjectApplicationSearch] = useState("");
   const [pinnedNavigationKeys, setPinnedNavigationKeys] = useState<string[]>(() => {
     try {
-      const storedKeys = JSON.parse(scopedStorage.getItem("argus:pinned-navigation-keys") ?? "[]");
+      const storedKeys = JSON.parse(window.localStorage.getItem("argus:pinned-navigation-keys") ?? "[]");
       return Array.isArray(storedKeys) ? storedKeys.filter((key): key is string => typeof key === "string") : [];
     } catch {
       return [];
@@ -8938,11 +8248,11 @@ function ConversationNavigation({
   const pinFeedbackTimerRef = useRef<number | null>(null);
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase("zh-CN");
   const navigationSortNow = new Date();
-  const activeTeam = getActiveTeam() ?? { id: "", name: "暂未加入团队", avatarColor: "var(--ui-color-neutral-8)" };
+  const activeTeam = teamOptions.find((team) => team.id === activeTeamId) ?? teamOptions[0];
   const teamMenu: MenuProps = {
     selectable: true,
     selectedKeys: [activeTeamId],
-    onClick: ({ key }) => selectTeam(key, getBrowserPath("/apps")),
+    onClick: ({ key }) => setActiveTeamId(key),
     items: teamOptions.map((team) => ({
       key: team.id,
       label: (
@@ -9008,7 +8318,6 @@ function ConversationNavigation({
     ),
   }));
   const filteredStandaloneConversationGroups = standaloneConversationGroups.filter((group) => {
-    if (hiddenNavigationKeys.includes(group.key)) return false;
     if (!normalizedQuery) return true;
     const standaloneApplicationName = group.application?.name;
     return [
@@ -9117,7 +8426,7 @@ function ConversationNavigation({
   }, [activeConversationId, activeProjectId, applicationsPageActive, collapsed]);
 
   useEffect(() => {
-    scopedStorage.setItem("argus:pinned-navigation-keys", JSON.stringify(pinnedNavigationKeys));
+    window.localStorage.setItem("argus:pinned-navigation-keys", JSON.stringify(pinnedNavigationKeys));
   }, [pinnedNavigationKeys]);
 
   useEffect(() => () => {
@@ -9156,17 +8465,13 @@ function ConversationNavigation({
     setNavigationMode(value);
     if (value === "app-builder") {
       window.setTimeout(() => {
-        window.location.assign(applicationStudioUrl);
+        window.location.assign(import.meta.env.VITE_APPLICATION_STUDIO_URL || "/applications/studio");
       }, reduceMotion ? 0 : 240);
     }
   };
   const navigationModeTransition = reduceMotion
     ? { duration: 0 }
     : { duration: 0.18, ease: [0.2, 0, 0, 1] as const };
-
-  const openAccountSettings = () => {
-    setAccountSettingsOpen(true);
-  };
 
   const navigationItemNodes = navigationItems.map((item) => {
     if (item.type === "project") {
@@ -9224,10 +8529,6 @@ function ConversationNavigation({
     const { group } = item;
     const conversation = group.conversations[0];
     const label = group.application ? group.application.name : conversation.title;
-    const originalApplicationName = getConversationCatalogTemplate(conversation)?.name;
-    const secondaryLabel = conversation.applicationAlias?.trim() && originalApplicationName
-      ? originalApplicationName
-      : conversation.title;
     const groupActive = isStandaloneConversation
       && group.conversations.some((groupConversation) => groupConversation.id === activeConversationId);
     const groupConversationIds = new Set(group.conversations.map((groupConversation) => groupConversation.id));
@@ -9250,7 +8551,7 @@ function ConversationNavigation({
           <span className="navigation-content-copy">
             <span className="navigation-content-label">{label}</span>
             {group.application ? (
-              <span className="navigation-content-latest" title={secondaryLabel}>{secondaryLabel}</span>
+              <span className="navigation-content-latest" title={conversation.title}>{conversation.title}</span>
             ) : null}
           </span>
           <small className="navigation-time">{formatNavigationUpdatedAt(conversation.updatedAt)}</small>
@@ -9265,7 +8566,7 @@ function ConversationNavigation({
             onClick: ({ key }) => {
               if (key === "pin") toggleNavigationPin(item.key, label);
               if (key === "rename") onRename(conversation);
-              if (key === "remove") onDelete(conversation);
+              if (key === "delete") onDelete(conversation);
             },
           }}
         >
@@ -9297,14 +8598,7 @@ function ConversationNavigation({
           <Archive size={16} />
           <span>归档</span>
         </button>
-        <button
-          className="settings-menu-item"
-          type="button"
-          onClick={() => {
-            setSettingsOpen(false);
-            openAccountSettings();
-          }}
-        >
+        <button className="settings-menu-item" type="button" onClick={() => onPrototypeAction("账号设置")}>
           <UserRoundCog size={16} />
           <span>账号设置</span>
         </button>
@@ -9653,10 +8947,6 @@ function ConversationNavigation({
               const label = group.application
                 ? group.application.name
                 : conversation.title;
-              const originalApplicationName = getConversationCatalogTemplate(conversation)?.name;
-              const secondaryLabel = conversation.applicationAlias?.trim() && originalApplicationName
-                ? originalApplicationName
-                : conversation.title;
               const groupActive = isStandaloneConversation
                 && group.conversations.some((groupConversation) => groupConversation.id === activeConversationId);
               const groupConversationIds = new Set(group.conversations.map((groupConversation) => groupConversation.id));
@@ -9682,7 +8972,7 @@ function ConversationNavigation({
                     <span className="navigation-content-copy">
                       <span className="navigation-content-label">{label}</span>
                       {group.application ? (
-                        <span className="navigation-content-latest" title={secondaryLabel}>{secondaryLabel}</span>
+                        <span className="navigation-content-latest" title={conversation.title}>{conversation.title}</span>
                       ) : null}
                     </span>
                     <small className="navigation-time">{formatNavigationUpdatedAt(conversation.updatedAt)}</small>
@@ -9697,7 +8987,7 @@ function ConversationNavigation({
                       onClick: ({ key }) => {
                         if (key === "pin") toggleNavigationPin(item.key, label);
                         if (key === "rename") onRename(conversation);
-                        if (key === "remove") onDelete(conversation);
+                        if (key === "delete") onDelete(conversation);
                       },
                     }}
                   >
@@ -9779,13 +9069,13 @@ function ConversationNavigation({
 
       <div className="navigation-account">
         <div className="profile-row">
-          <Dropdown disabled={teamOptions.length < 2} menu={teamMenu} placement="topLeft" trigger={["click"]}>
+          <Dropdown menu={teamMenu} placement="topLeft" trigger={["click"]}>
             <button className="navigation-team-selector" type="button" aria-label={`切换团队，当前为${activeTeam.name}`}>
               <InitialAvatar name={activeTeam.name} color={activeTeam.avatarColor} />
               <span className="navigation-team-copy">
                 <span>{activeTeam.name}</span>
               </span>
-              {teamOptions.length > 1 ? <ChevronsUpDown size={12} /> : null}
+              <ChevronsUpDown size={12} />
             </button>
           </Dropdown>
           <Dropdown
@@ -9805,7 +9095,6 @@ function ConversationNavigation({
         </>
       )}
 
-      {(accountSettingsPrimed || accountSettingsOpen) && <SharedAccountOverlay managementUrl={applicationStudioUrl} open={accountSettingsOpen} onClose={closeAccountSettings} />}
       <Modal
         className="create-project-modal"
         title="创建群组项目"
@@ -9831,7 +9120,7 @@ function ConversationNavigation({
               allowClear
               onChange={(event) => setNewProjectApplicationSearch(event.target.value)}
             />
-            <div className={`create-project-application-list${visibleNewProjectApplications.length === 0 ? " is-empty" : ""}`}>
+            <div className="create-project-application-list">
               {visibleNewProjectApplications.map((application) => {
                 const checked = newProjectApplicationIds.includes(application.id);
                 return (
@@ -9883,7 +9172,6 @@ function ConversationNavigation({
                 value={newProjectAdministratorId}
                 placeholder="请先勾选数字员工"
                 aria-label="群组项目管理员"
-                suffixIcon={<ChevronDown size={14} />}
                 options={selectedProjectApplications.map((application) => ({
                   value: application.id,
                   label: application.name,
@@ -9930,7 +9218,7 @@ const MESSAGE_FLAGS_STORAGE_PREFIX = "argus-conversation-message-flags-v1";
 
 function readMessageFlags(conversationId: string) {
   try {
-    const value = scopedStorage.getItem(`${MESSAGE_FLAGS_STORAGE_PREFIX}:${conversationId}`);
+    const value = window.localStorage.getItem(`${MESSAGE_FLAGS_STORAGE_PREFIX}:${conversationId}`);
     return value ? (JSON.parse(value) as string[]) : [];
   } catch {
     return [];
@@ -10013,7 +9301,7 @@ function ConversationQuickNavigator({
       const next = current.includes(messageId)
         ? current.filter((item) => item !== messageId)
         : [...current, messageId];
-      scopedStorage.setItem(`${MESSAGE_FLAGS_STORAGE_PREFIX}:${conversationId}`, JSON.stringify(next));
+      window.localStorage.setItem(`${MESSAGE_FLAGS_STORAGE_PREFIX}:${conversationId}`, JSON.stringify(next));
       return next;
     });
   };
@@ -10083,7 +9371,6 @@ type ThreadViewProps = {
   catalogApplicationId: string | null;
   project?: Project | null;
   projectApplications?: CatalogApplication[];
-  runtimeError?: string | null;
   availableApplications: CatalogApplication[];
   availableProjects: Project[];
   enableApplicationMentions?: boolean;
@@ -10096,7 +9383,6 @@ type ThreadViewProps = {
   onTargetProjectSelect: (projectId: string) => void;
   onBrowseApplication: (applicationId: string) => void;
   onBrowseProject: (projectId: string) => void;
-  onRuntimeErrorDismiss: () => void;
   onStop: () => void;
   uploadProps: UploadProps;
 };
@@ -10110,7 +9396,6 @@ function ThreadView({
   catalogApplicationId,
   project,
   projectApplications,
-  runtimeError,
   availableApplications,
   availableProjects,
   enableApplicationMentions = false,
@@ -10123,7 +9408,6 @@ function ThreadView({
   onTargetProjectSelect,
   onBrowseApplication,
   onBrowseProject,
-  onRuntimeErrorDismiss,
   onStop,
   uploadProps,
 }: ThreadViewProps) {
@@ -10155,7 +9439,6 @@ function ThreadView({
                 ? <UserMessage />
                 : <AssistantMessage
                     application={selectedCatalogApplication}
-                    applications={projectApplications}
                     administratorApplicationId={administratorApplicationId}
                     enableApplicationMention={enableApplicationMentions}
                     fallbackName={activeAgentName}
@@ -10179,41 +9462,26 @@ function ThreadView({
         </div>
 
         <ThreadPrimitive.ViewportFooter className="composer-footer">
-          <div className="composer-runtime-stack">
-            {runtimeError ? (
-              <div className="runtime-alert" role="alert">
-                <span className="font-strong">本轮运行需要处理</span>
-                <span>{runtimeError}</span>
-                <Button
-                  size="small"
-                  type="text"
-                  icon={<X size={14} />}
-                  aria-label="关闭运行提示"
-                  onClick={onRuntimeErrorDismiss}
-                />
-              </div>
-            ) : null}
-            <Composer
-              conversationId={conversationId}
-              selectedApplication={selectedCatalogApplication}
-              selectedProject={project}
-              showConversationTarget={showConversationTarget}
-              availableApplications={availableApplications}
-              availableProjects={availableProjects}
-              projectApplications={projectApplications}
-              enableApplicationMentions={enableApplicationMentions}
-              insertApplicationMentionRef={insertApplicationMentionRef}
-              insertStarterPromptRef={insertStarterPromptRef}
-              resourceFiles={resourceFiles}
-              resourceConversations={resourceConversations}
-              files={files}
-              onFileRemove={onFileRemove}
-              onTargetApplicationSelect={onTargetApplicationSelect}
-              onTargetProjectSelect={onTargetProjectSelect}
-              onStop={onStop}
-              uploadProps={uploadProps}
-            />
-          </div>
+          <Composer
+            conversationId={conversationId}
+            selectedApplication={selectedCatalogApplication}
+            selectedProject={project}
+            showConversationTarget={showConversationTarget}
+            availableApplications={availableApplications}
+            availableProjects={availableProjects}
+            projectApplications={projectApplications}
+            enableApplicationMentions={enableApplicationMentions}
+            insertApplicationMentionRef={insertApplicationMentionRef}
+            insertStarterPromptRef={insertStarterPromptRef}
+            resourceFiles={resourceFiles}
+            resourceConversations={resourceConversations}
+            files={files}
+            onFileRemove={onFileRemove}
+            onTargetApplicationSelect={onTargetApplicationSelect}
+            onTargetProjectSelect={onTargetProjectSelect}
+            onStop={onStop}
+            uploadProps={uploadProps}
+          />
           {isEmpty && !enableApplicationMentions && !selectedCatalogApplication ? (
             <NewConversationTargetBrowser
               applications={availableApplications}
@@ -10459,135 +9727,34 @@ function UserMessage() {
   );
 }
 
-function AssistantThinkingIndicator() {
-  const reduceMotion = useReducedMotion();
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [expanded, setExpanded] = useState(false);
-  const detailsId = useId();
-  const activeStepIndex = elapsedSeconds < 0.6 ? 0 : elapsedSeconds < 1.2 ? 1 : 2;
-  const steps = ["理解问题", "整理对话上下文", "生成回复"];
-
-  useEffect(() => {
-    const startedAt = performance.now();
-    const intervalId = window.setInterval(() => {
-      setElapsedSeconds((performance.now() - startedAt) / 1000);
-    }, 100);
-
-    return () => window.clearInterval(intervalId);
-  }, []);
-
-  return (
-    <motion.div
-      className="assistant-thinking"
-      initial={reduceMotion ? false : { opacity: 0, y: 4, scale: 0.98 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.22, 1, 0.36, 1] }}
-    >
-      <span className="assistant-thinking-announcement" role="status" aria-live="polite">
-        正在生成回复
-      </span>
-      <button
-        className="assistant-thinking-trigger"
-        type="button"
-        aria-expanded={expanded}
-        aria-controls={detailsId}
-        aria-label={`思考中，${expanded ? "收起" : "展开"}思考过程`}
-        onClick={() => setExpanded((current) => !current)}
-      >
-        <span className="assistant-thinking-glyph" aria-hidden="true">
-          <Sparkles size={14} strokeWidth={1.8} />
-        </span>
-        <span className="assistant-thinking-label">思考中</span>
-        <span className="assistant-thinking-dots" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </span>
-        <span className="assistant-thinking-timer" aria-hidden="true">
-          {elapsedSeconds.toFixed(1)}s
-        </span>
-        <ChevronDown className="assistant-thinking-chevron" size={14} aria-hidden="true" />
-      </button>
-      <AnimatePresence initial={false}>
-        {expanded ? (
-          <motion.ol
-            className="assistant-thinking-steps"
-            id={detailsId}
-            initial={reduceMotion ? false : { height: 0, opacity: 0, y: -4 }}
-            animate={{ height: "auto", opacity: 1, y: 0 }}
-            exit={reduceMotion ? undefined : { height: 0, opacity: 0, y: -3 }}
-            transition={{ duration: reduceMotion ? 0 : 0.2, ease: [0.2, 0, 0, 1] }}
-          >
-            {steps.map((step, index) => (
-              <motion.li
-                className={index < activeStepIndex ? "is-complete" : index === activeStepIndex ? "is-active" : ""}
-                key={step}
-                initial={reduceMotion ? false : { opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: reduceMotion ? 0 : 0.16, delay: reduceMotion ? 0 : index * 0.025 }}
-              >
-                <span className="assistant-thinking-step-marker" aria-hidden="true">
-                  {index < activeStepIndex ? <Check size={10} strokeWidth={2.4} /> : null}
-                </span>
-                <span>{step}</span>
-              </motion.li>
-            ))}
-          </motion.ol>
-        ) : null}
-      </AnimatePresence>
-    </motion.div>
-  );
-}
-
 function AssistantMessage({
   application,
-  applications,
   administratorApplicationId,
   enableApplicationMention,
   fallbackName,
   onApplicationMention,
 }: {
   application?: CatalogApplication;
-  applications?: CatalogApplication[];
   administratorApplicationId?: string | null;
   enableApplicationMention: boolean;
   fallbackName: string;
   onApplicationMention: (application: CatalogApplication) => void;
 }) {
   const messageId = useAuiState((state) => state.message.id);
-  const isStreaming = useAuiState((state) => (
-    state.thread.isRunning
-    && state.message.role === "assistant"
-    && state.message.isLast
-  ));
-  const isThinking = useAuiState((state) => (
-    state.thread.isRunning
-    && state.message.role === "assistant"
-    && state.message.isLast
-    && state.message.content.every((part) => part.type !== "text" || part.text.trim().length === 0)
-  ));
   const messageCatalogApplicationId = useAuiState((state) => {
     if (state.message.role !== "assistant") return undefined;
     const value = state.message.metadata.custom?.catalogApplicationId;
     return typeof value === "string" ? value : undefined;
   });
-  const catalogMessageApplication = applicationCatalog.find(
+  const messageApplication = applicationCatalog.find(
     (catalogApplication) => catalogApplication.id === messageCatalogApplicationId,
-  );
-  const messageApplication = applications?.find(
-    (candidate) => candidate.id === messageCatalogApplicationId,
-  ) ?? (application?.id === messageCatalogApplicationId
-    ? application
-    : catalogMessageApplication ?? application);
+  ) ?? application;
   const displayName = messageApplication?.name ?? fallbackName;
   const isAdministrator = Boolean(
     administratorApplicationId && messageApplication?.id === administratorApplicationId,
   );
   return (
-    <MessagePrimitive.Root
-      className={`message-row assistant-message-row${isStreaming ? " is-streaming" : ""}`}
-      data-message-id={messageId}
-    >
+    <MessagePrimitive.Root className="message-row assistant-message-row" data-message-id={messageId}>
       <Avatar
         className="message-avatar application-avatar-surface"
         size={24}
@@ -10612,14 +9779,11 @@ function AssistantMessage({
             <Tag className="message-administrator-tag" color="blue" variant="filled">管理员</Tag>
           ) : null}
         </div>
-        <div className={`message-surface assistant-message-surface${isThinking ? " is-thinking" : ""}${isStreaming ? " is-streaming" : ""}`}>
-          {isThinking ? (
-            <AssistantThinkingIndicator />
-          ) : (
-            <MessagePrimitive.Parts>
-              {({ part }) => part.type === "text" ? <MessagePartPrimitive.Text /> : null}
-            </MessagePrimitive.Parts>
-          )}
+        <MessageProcessDisclosure />
+        <div className="message-surface assistant-message-surface">
+          <MessagePrimitive.Parts>
+            {({ part }) => part.type === "text" ? <MessagePartPrimitive.Text /> : null}
+          </MessagePrimitive.Parts>
         </div>
         <ActionBarPrimitive.Root className="message-actions" data-floating hideWhenRunning autohide="never">
           <Tooltip title="复制">
@@ -10635,6 +9799,54 @@ function AssistantMessage({
         </ActionBarPrimitive.Root>
       </div>
     </MessagePrimitive.Root>
+  );
+}
+
+function MessageProcessDisclosure() {
+  const startedAt = useAuiState((state) => state.message.metadata?.custom?.processStartedAt);
+  const completedAt = useAuiState((state) => state.message.metadata?.custom?.processCompletedAt);
+  const status = useAuiState((state) => state.message.metadata?.custom?.processStatus);
+  const hasAnswer = useAuiState((state) => state.message.parts.some((part) => (
+    part.type === "text" && part.text.length > 0
+  )));
+  const hasProcess = typeof startedAt === "number"
+    && (status === "running" || status === "completed" || status === "failed" || status === "cancelled");
+
+  if (!hasProcess) return null;
+
+  const durationSeconds = Math.max(
+    1,
+    Math.round(((typeof completedAt === "number" ? completedAt : Date.now()) - startedAt) / 1000),
+  );
+  const working = status === "running";
+  const steps = working && !hasAnswer
+    ? ["理解任务目标与上下文", "分析信息并确定回答重点"]
+    : ["理解任务目标与上下文", "分析信息并确定回答重点", "组织并生成最终答复"];
+  const doneLabel = status === "completed"
+    ? "思考完成，用时"
+    : status === "failed"
+      ? "处理未完成，用时"
+      : "处理已停止，用时";
+
+  return (
+    <ThoughtLine
+      className={`message-process is-${status}`}
+      working={working}
+      steps={steps}
+      label={hasAnswer ? "正在组织答复…" : "正在思考…"}
+      doneLabel={doneLabel}
+      elapsed={working ? undefined : durationSeconds}
+      fontSize={13}
+      breathPeriod={1.6}
+      breathDepth={0.42}
+      settleDuration={350}
+      settleBlur={2}
+      collapsible
+      collapseOnSettle={false}
+      showTimer
+      color="var(--ant-color-text-secondary)"
+      glyphColor="var(--ant-color-primary)"
+    />
   );
 }
 
@@ -11080,7 +10292,7 @@ function Composer({
   const mentionApplications = enableApplicationMentions
     ? (projectApplications ?? []).filter((application) => (
         !mentionQuery
-        || `${application.name} ${application.originalName ?? ""} ${application.category} ${application.description}`
+        || `${application.name} ${application.category} ${application.description}`
           .toLocaleLowerCase()
           .includes(mentionQuery.toLocaleLowerCase())
     ))
@@ -11314,7 +10526,7 @@ function Composer({
               <img src={application.avatar} alt="" />
               <span>
                 <span>{application.name}</span>
-                <small>{application.originalName ?? application.category}</small>
+                <small>{application.category}</small>
               </span>
             </button>
           )) : (
